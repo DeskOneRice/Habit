@@ -2,6 +2,7 @@ package com.habit.app.ui.habits
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.habit.app.domain.model.Category
 import com.habit.app.domain.model.Habit
 import com.habit.app.domain.model.HabitHistorySnapshot
 import com.habit.app.domain.repository.CalendarRepository
@@ -31,11 +32,17 @@ import kotlinx.coroutines.launch
 
 private const val DETAIL_LOAD_FAILURE_MESSAGE = "习惯详情加载失败，请稍后重试"
 private const val DETAIL_MISSING_MESSAGE = "习惯不存在或已被删除"
+private const val CATEGORY_LOAD_FAILURE_MESSAGE = "分类信息加载失败，请稍后重试"
 
 private sealed interface HistoryResult {
     data object Loading : HistoryResult
     data class Loaded(val snapshot: HabitHistorySnapshot) : HistoryResult
     data class Failed(val message: String) : HistoryResult
+}
+
+private sealed interface CategoryResult {
+    data class Loaded(val categories: List<Category>) : CategoryResult
+    data class Failed(val message: String) : CategoryResult
 }
 
 data class HabitDetailUiState(
@@ -91,10 +98,11 @@ class HabitDetailViewModel(
                 }
         }
 
-    private val categories = categoryRepository.observeAll()
+    private val categories: Flow<CategoryResult> = categoryRepository.observeAll()
+        .map<List<Category>, CategoryResult>(CategoryResult::Loaded)
         .catch { failure ->
             if (failure is CancellationException) throw failure
-            emit(emptyList())
+            emit(CategoryResult.Failed(CATEGORY_LOAD_FAILURE_MESSAGE))
         }
 
     val state: StateFlow<HabitDetailUiState> = combine(
@@ -102,7 +110,7 @@ class HabitDetailViewModel(
         visibleMonth,
         history,
         categories,
-    ) { currentDeviceDate, month, historyResult, allCategories ->
+    ) { currentDeviceDate, month, historyResult, categoryResult ->
         when (historyResult) {
             HistoryResult.Loading -> HabitDetailUiState(
                 habitId = habitId,
@@ -128,8 +136,9 @@ class HabitDetailViewModel(
                     zoneId = currentDeviceDate.zoneId,
                     visibleMonth = month,
                     history = snapshot,
-                    categoryName = allCategories
-                        .firstOrNull { it.id == snapshot.habit.categoryId }
+                    categoryName = (categoryResult as? CategoryResult.Loaded)
+                        ?.categories
+                        ?.firstOrNull { it.id == snapshot.habit.categoryId }
                         ?.name
                         .orEmpty(),
                     monthProgress = habitMonthProgress(
@@ -139,6 +148,7 @@ class HabitDetailViewModel(
                         today = currentDeviceDate.today,
                     ),
                     loading = false,
+                    message = (categoryResult as? CategoryResult.Failed)?.message,
                 )
             }
         }

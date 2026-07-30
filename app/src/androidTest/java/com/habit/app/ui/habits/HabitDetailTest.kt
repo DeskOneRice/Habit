@@ -2,11 +2,14 @@ package com.habit.app.ui.habits
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
@@ -50,7 +53,15 @@ class HabitDetailTest {
             .onNodeWithTag("habit_day_${today.minusDays(1)}_completed")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag("habit_day_$today").performScrollTo().assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("habit_day_$today")
+            .performScrollTo()
+            .assert(
+                SemanticsMatcher.expectValue(
+                    SemanticsProperties.StateDescription,
+                    "未完成",
+                ),
+            )
 
         composeRule.onNodeWithTag("habit_detail_previous_month").performScrollTo().performClick()
         val previousMonth = YearMonth.from(today).minusMonths(1)
@@ -58,6 +69,10 @@ class HabitDetailTest {
             .onNodeWithTag("habit_detail_month_title")
             .assertTextEquals("${previousMonth.year}年${previousMonth.monthValue}月")
         composeRule.onNodeWithTag("habit_detail_next_month").performClick()
+        val currentMonth = YearMonth.from(today)
+        composeRule
+            .onNodeWithTag("habit_detail_month_title")
+            .assertTextEquals("${currentMonth.year}年${currentMonth.monthValue}月")
 
         composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
         composeRule.onNodeWithTag("habit_editor_screen").assertIsDisplayed()

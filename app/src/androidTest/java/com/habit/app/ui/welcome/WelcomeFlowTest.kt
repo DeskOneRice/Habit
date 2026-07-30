@@ -5,10 +5,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.Lifecycle
+import androidx.test.espresso.Espresso.pressBackUnconditionally
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
 import org.junit.Before
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,5 +50,22 @@ class WelcomeFlowTest {
 
         robot.assertDisplayed("calendar_screen")
         robot.assertDisplayed("bottom_navigation")
+    }
+
+    @Test
+    fun backFromFirstCreatedHabitListDoesNotReturnToCompletedOnboarding() {
+        composeRule.onNodeWithTag("welcome_create").performClick()
+        composeRule.onNodeWithTag("habit_name").performTextInput("第一个习惯")
+        composeRule.onNodeWithTag("emoji_book").performClick()
+        composeRule.onNodeWithText("学习").performClick()
+        composeRule.onNodeWithTag("save_habit").performClick()
+        robot.waitForTag("habit_list_screen")
+
+        pressBackUnconditionally()
+
+        assertTrue(
+            "Back should finish the onboarding task instead of revealing welcome/editor",
+            !composeRule.activityRule.scenario.state.isAtLeast(Lifecycle.State.STARTED),
+        )
     }
 }

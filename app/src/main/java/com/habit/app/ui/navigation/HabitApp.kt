@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -12,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -70,6 +72,9 @@ private fun AppNavigation(startDestination: HabitDestination, container: AppCont
         val showBottomNavigation = bottomDestinations.any { it.destination.route == currentRoute }
 
         Scaffold(
+            modifier = Modifier.testTag(
+                "app_theme_primary_${MaterialTheme.colorScheme.primary.toArgb()}",
+            ),
             bottomBar = {
                 if (showBottomNavigation) {
                     NavigationBar(Modifier.testTag("bottom_navigation")) {

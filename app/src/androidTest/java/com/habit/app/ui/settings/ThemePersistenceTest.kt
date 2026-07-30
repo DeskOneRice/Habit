@@ -6,10 +6,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.graphics.toArgb
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
 import com.habit.app.ui.theme.HabitThemeId
+import com.habit.app.ui.theme.colorScheme
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -37,7 +39,10 @@ class ThemePersistenceTest {
 
         composeRule.onNodeWithTag("theme_SAGE_GREEN").performClick()
         composeRule.onNodeWithTag("theme_SAGE_GREEN_selected").assertIsSelected()
-        composeRule.onNodeWithTag("theme_preview").assertIsDisplayed()
+        val expectedPrimary = HabitThemeId.SAGE_GREEN.colorScheme().primary.toArgb()
+        composeRule
+            .onNodeWithTag("app_theme_primary_$expectedPrimary")
+            .assertIsDisplayed()
 
         composeRule.activityRule.scenario.recreate()
         robot.waitForTag("settings_screen")

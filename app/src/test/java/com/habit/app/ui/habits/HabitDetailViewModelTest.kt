@@ -117,6 +117,34 @@ class HabitDetailViewModelTest {
         advanceUntilIdle()
         assertNull(cancelledViewModel.state.value.message)
     }
+
+    @Test
+    fun categoryRepositoryFailureShowsChineseStateButCancellationIsNotConverted() =
+        runTest(dispatcher) {
+            val failureViewModel = HabitDetailViewModel(
+                habitId = 7,
+                calendarRepository = RecordingHistoryRepository(),
+                habitRepository = NoOpHabitRepository,
+                categoryRepository = FailingCategoryRepository(
+                    IllegalStateException("database unavailable"),
+                ),
+                dateProvider = MutableDetailDateProvider(LocalDate.of(2031, 2, 3)),
+            )
+            advanceUntilIdle()
+
+            assertEquals("分类信息加载失败，请稍后重试", failureViewModel.state.value.message)
+
+            val cancelledViewModel = HabitDetailViewModel(
+                habitId = 7,
+                calendarRepository = RecordingHistoryRepository(),
+                habitRepository = NoOpHabitRepository,
+                categoryRepository = FailingCategoryRepository(CancellationException("cancel")),
+                dateProvider = MutableDetailDateProvider(LocalDate.of(2031, 2, 3)),
+            )
+            advanceUntilIdle()
+
+            assertNull(cancelledViewModel.state.value.message)
+        }
 }
 
 private class MutableDetailDateProvider(
@@ -194,6 +222,21 @@ private data object OneCategoryRepository : CategoryRepository {
 
     override fun observeVisible() = flowOf(listOf(category))
     override fun observeAll() = flowOf(listOf(category))
+    override suspend fun create(name: String): Long = error("Not used")
+    override suspend fun rename(id: Long, name: String) = Unit
+    override suspend fun setPresetHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
+}
+
+private class FailingCategoryRepository(private val failure: Throwable) : CategoryRepository {
+    override fun observeVisible() = flow<List<com.habit.app.domain.model.Category>> {
+        throw failure
+    }
+
+    override fun observeAll() = flow<List<com.habit.app.domain.model.Category>> {
+        throw failure
+    }
+
     override suspend fun create(name: String): Long = error("Not used")
     override suspend fun rename(id: Long, name: String) = Unit
     override suspend fun setPresetHidden(id: Long, hidden: Boolean) = Unit

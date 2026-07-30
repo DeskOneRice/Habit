@@ -73,7 +73,15 @@ fun HabitNavHost(
                 categories = container.categoryRepository,
                 onSaved = {
                     if (habitId == null) {
-                        navController.returnToHabits()
+                        if (
+                            navController.previousBackStackEntry
+                                ?.destination
+                                ?.route == HabitDestination.Welcome.route
+                        ) {
+                            navController.completeOnboarding()
+                        } else {
+                            navController.returnToHabits()
+                        }
                     } else {
                         navController.popBackStack()
                     }
@@ -123,6 +131,15 @@ fun HabitNavHost(
                 onBack = { navController.popBackStack() },
             )
         }
+    }
+}
+
+private fun NavHostController.completeOnboarding() {
+    navigate(HabitDestination.Habits.route) {
+        popUpTo(HabitDestination.Welcome.route) {
+            inclusive = true
+        }
+        launchSingleTop = true
     }
 }
 
