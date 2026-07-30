@@ -202,6 +202,27 @@ class CalendarViewModelTest {
     }
 
     @Test
+    fun toggleKeepsVisibleSelectedBusinessDateAcrossMidnightRefresh() = runTest(dispatcher) {
+        val selectedDate = LocalDate.of(2031, 2, 3)
+        val provider = MutableDateProvider(selectedDate, ZoneId.of("UTC"))
+        val checkIns = RecordingCheckIns()
+        val viewModel = CalendarViewModel(
+            RecordingCalendarRepository(),
+            checkIns,
+            provider,
+        )
+        advanceUntilIdle()
+
+        provider.date = selectedDate.plusDays(1)
+        viewModel.toggle(7)
+        advanceUntilIdle()
+
+        assertEquals(listOf(selectedDate), checkIns.dates)
+        assertEquals(listOf(selectedDate.plusDays(1)), checkIns.todays)
+        assertEquals(selectedDate, viewModel.state.value.selectedDate)
+    }
+
+    @Test
     fun changingMonthClearsPreviousSnapshotUntilMatchingMonthArrives() = runTest(dispatcher) {
         val today = LocalDate.of(2031, 2, 3)
         val calendar = ControllableMonthCalendarRepository()

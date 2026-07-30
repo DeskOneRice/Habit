@@ -137,8 +137,8 @@ class CalendarViewModel(
             selectedDate = selectedDate,
             today = deviceDate.today,
             zoneId = deviceDate.zoneId,
-            month = month,
-            day = day,
+            month = month?.takeIf { it.month == visibleMonth },
+            day = day?.takeIf { it.epochDay == selectedDate.toEpochDay() },
         )
     }.combine(togglingHabitIds) { state, toggling ->
         state.copy(togglingHabitIds = toggling)
@@ -169,8 +169,8 @@ class CalendarViewModel(
     }
 
     fun toggle(habitId: Long) {
-        refreshDeviceDate()
         val date = selectedDate.value
+        refreshDeviceDate()
         val currentToday = deviceDate.value.today
         synchronized(toggleGuard) {
             if (habitId in togglingHabitIds.value) return
@@ -202,12 +202,8 @@ class CalendarViewModel(
         val refreshed = dateProvider.snapshot()
         if (refreshed == previous) return
 
-        val selectedDateFollowedToday = selectedDate.value == previous.today
         val visibleMonthFollowedToday = visibleMonth.value == YearMonth.from(previous.today)
         deviceDate.value = refreshed
-        if (selectedDateFollowedToday) {
-            selectedDate.value = refreshed.today
-        }
         if (visibleMonthFollowedToday) {
             visibleMonth.value = YearMonth.from(refreshed.today)
         }
