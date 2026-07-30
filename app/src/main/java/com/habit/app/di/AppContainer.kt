@@ -16,6 +16,8 @@ import com.habit.app.domain.repository.CalendarRepository
 import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.domain.repository.CheckInRepository
 import com.habit.app.domain.repository.HabitRepository
+import com.habit.app.domain.time.DeviceDateProvider
+import com.habit.app.domain.time.SystemDeviceDateProvider
 import java.time.Clock
 
 private const val THEME_PREFERENCES_FILE = "habit_theme_preferences"
@@ -24,7 +26,10 @@ val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_PREFERENCES_FILE,
 )
 
-class AppContainer(context: Context) {
+class AppContainer(
+    context: Context,
+    val dateProvider: DeviceDateProvider = SystemDeviceDateProvider(),
+) {
     private val applicationContext = context.applicationContext
     private val clock: Clock = Clock.systemUTC()
 

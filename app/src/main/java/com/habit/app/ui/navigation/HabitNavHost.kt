@@ -17,6 +17,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.habit.app.di.AppContainer
+import com.habit.app.ui.calendar.CalendarScreen
+import com.habit.app.ui.calendar.CalendarViewModel
 import com.habit.app.ui.categories.CategoryScreen
 import com.habit.app.ui.categories.CategoryViewModel
 import com.habit.app.ui.habits.HabitEditorScreen
@@ -28,7 +30,9 @@ import com.habit.app.ui.welcome.WelcomeScreen
 @Composable fun HabitNavHost(navController: NavHostController, startDestination: HabitDestination, container: AppContainer) {
     NavHost(navController, startDestination.route) {
         composable(HabitDestination.Welcome.route) { WelcomeScreen { navController.navigate(HabitDestination.HabitEditor.route()) } }
-        composable(HabitDestination.Calendar.route) { DestinationPlaceholder("calendar_screen", "日历") }
+        composable(HabitDestination.Calendar.route) {
+            CalendarScreen(viewModel(factory = CalendarFactory(container)))
+        }
         composable(HabitDestination.Habits.route) { HabitListScreen(viewModel(factory = ListFactory(container)), { navController.navigate(HabitDestination.HabitEditor.route()) }, { navController.navigate(HabitDestination.HabitEditor.route(it)) }, { navController.navigate(HabitDestination.Categories.route) }) }
         composable(HabitDestination.HabitEditor.route, arguments = listOf(navArgument("habitId") { type = NavType.LongType; defaultValue = -1L })) { entry ->
             val model: HabitEditorViewModel = viewModel(factory = EditorFactory(container, entry.arguments?.getLong("habitId")?.takeIf { it >= 0 }))
@@ -43,3 +47,8 @@ import com.habit.app.ui.welcome.WelcomeScreen
 private class ListFactory(private val c: AppContainer) : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = HabitListViewModel(c.habitRepository, c.categoryRepository) as T }
 private class EditorFactory(private val c: AppContainer, private val id: Long?) : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = HabitEditorViewModel(c.habitRepository, c.categoryRepository, id) as T }
 private class CategoryFactory(private val c: AppContainer) : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = CategoryViewModel(c.categoryRepository, c.habitRepository) as T }
+private class CalendarFactory(private val c: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>) =
+        CalendarViewModel(c.calendarRepository, c.checkInRepository, c.dateProvider) as T
+}
