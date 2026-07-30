@@ -8,11 +8,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
@@ -42,6 +44,20 @@ class HabitCrudFlowTest {
 
         composeRule.onNodeWithText("背单词").assertIsDisplayed()
         composeRule.onNodeWithText("学习").assertIsDisplayed()
+    }
+
+    @Test
+    fun savingAnEditOpenedFromDetailReturnsToDetail() {
+        composeRule.onNodeWithTag("welcome_create").performClick()
+        robot.createHabit("待编辑习惯", "emoji_book", "学习")
+        composeRule.onNodeWithText("待编辑习惯").performClick()
+        composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
+        composeRule.onNodeWithTag("habit_name").performTextClearance()
+        composeRule.onNodeWithTag("habit_name").performTextInput("编辑后习惯")
+        composeRule.onNodeWithTag("save_habit").performClick()
+
+        composeRule.onNodeWithTag("habit_detail_screen").assertIsDisplayed()
+        composeRule.onNodeWithText("编辑后习惯").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -76,10 +92,17 @@ class HabitCrudFlowTest {
         composeRule.onNodeWithText("新建分类").performClick()
         composeRule.onNodeWithText("分类名称").performTextInput("阅读")
         composeRule.onNodeWithText("保存").performClick()
+        robot.waitForText("完成")
         composeRule.onNodeWithText("完成").performClick()
         composeRule.onNodeWithText("迁移习惯").performClick()
+        composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
+        robot.waitForText("阅读")
         composeRule.onNodeWithText("阅读").performClick()
         composeRule.onNodeWithTag("save_habit").performClick()
+        composeRule
+            .onNodeWithContentDescription("返回习惯列表")
+            .performScrollTo()
+            .performClick()
         composeRule.onNodeWithText("管理分类").performClick()
         composeRule.onNodeWithText("删除").performClick()
         composeRule.onNodeWithTag("category_migration_warning").assertIsDisplayed()

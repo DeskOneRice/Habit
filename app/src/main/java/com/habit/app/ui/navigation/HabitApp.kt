@@ -44,7 +44,9 @@ fun HabitApp(container: AppContainer) {
     val viewModel: WelcomeViewModel = viewModel(
         factory = WelcomeViewModelFactory(container),
     )
-    val firstRunDestination by viewModel.destination.collectAsStateWithLifecycle()
+    val firstRunDestination by viewModel.destination.collectAsStateWithLifecycle(
+        initialValue = FirstRunDestination.Loading,
+    )
     var initialDestination by remember { mutableStateOf<FirstRunDestination?>(null) }
     if (initialDestination == null && firstRunDestination != FirstRunDestination.Loading) {
         initialDestination = firstRunDestination

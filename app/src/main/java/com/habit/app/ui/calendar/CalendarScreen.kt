@@ -1,10 +1,5 @@
 package com.habit.app.ui.calendar
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,21 +15,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import com.habit.app.ui.components.DeviceDateRefreshEffect
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -42,46 +33,9 @@ import kotlin.math.roundToInt
 @Composable
 fun CalendarScreen(viewModel: CalendarViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     var sheetVisible by remember { mutableStateOf(false) }
 
-    DisposableEffect(context, lifecycleOwner, viewModel) {
-        val applicationContext = context.applicationContext
-        val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshDeviceDate()
-            }
-        }
-        val dateChangeReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                viewModel.refreshDeviceDate()
-            }
-        }
-        val dateChangeFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_DATE_CHANGED)
-            addAction(Intent.ACTION_TIME_CHANGED)
-            addAction(Intent.ACTION_TIMEZONE_CHANGED)
-        }
-
-        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            applicationContext.registerReceiver(
-                dateChangeReceiver,
-                dateChangeFilter,
-                Context.RECEIVER_NOT_EXPORTED,
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            applicationContext.registerReceiver(dateChangeReceiver, dateChangeFilter)
-        }
-        viewModel.refreshDeviceDate()
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-            applicationContext.unregisterReceiver(dateChangeReceiver)
-        }
-    }
+    DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
 
     Column(
         modifier = Modifier

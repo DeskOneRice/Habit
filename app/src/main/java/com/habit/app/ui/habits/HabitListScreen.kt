@@ -20,7 +20,7 @@ import com.habit.app.ui.components.habitEmoji
 fun HabitListScreen(
     viewModel: HabitListViewModel,
     onCreate: () -> Unit,
-    onEdit: (Long) -> Unit,
+    onOpenDetail: (Long) -> Unit,
     onCategories: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,7 +72,7 @@ fun HabitListScreen(
                         items = state.active.filter { it.categoryId == category.id },
                         key = { habit -> habit.id },
                     ) { habit ->
-                        HabitRow(habit = habit) { onEdit(habit.id) }
+                        HabitRow(habit = habit) { onOpenDetail(habit.id) }
                     }
                 }
             if (state.active.isEmpty()) {
@@ -94,7 +94,7 @@ fun HabitListScreen(
                         items = state.archived,
                         key = { habit -> "archived_${habit.id}" },
                     ) { habit ->
-                        HabitRow(habit = habit) { onEdit(habit.id) }
+                        HabitRow(habit = habit) { onOpenDetail(habit.id) }
                     }
                 }
             }

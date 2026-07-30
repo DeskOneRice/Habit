@@ -4,10 +4,13 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.printToString
 import androidx.test.platform.app.InstrumentationRegistry
 import com.habit.app.data.local.CategoryEntity
 import com.habit.app.data.local.CheckInEntity
@@ -104,6 +107,23 @@ class HabitTestRobot(val rule: ComposeTestRule) {
         }
     }
 
+    fun seedCheckIns(habitId: Long, dates: List<LocalDate>) = runBlocking {
+        dates.forEachIndexed { index, date ->
+            container.database.checkInDao().insert(
+                CheckInEntity(
+                    habitId = habitId,
+                    checkInEpochDay = date.toEpochDay(),
+                    createdAt = 2_000L + index,
+                    updatedAt = 2_000L + index,
+                ),
+            )
+        }
+    }
+
+    fun habitThemeColor(habitId: Long): Long = runBlocking {
+        container.database.habitDao().getById(habitId)!!.themeColor
+    }
+
     private suspend fun insertHabit(
         name: String,
         iconKey: String,
@@ -148,8 +168,30 @@ class HabitTestRobot(val rule: ComposeTestRule) {
     }
 
     fun waitForTag(testTag: String, useUnmergedTree: Boolean = false) {
-        rule.waitUntil(timeoutMillis = 5_000) {
-            rule.onAllNodesWithTag(testTag, useUnmergedTree).fetchSemanticsNodes().isNotEmpty()
+        try {
+            rule.waitUntil(timeoutMillis = 5_000) {
+                rule.onAllNodesWithTag(testTag, useUnmergedTree).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            throw AssertionError(
+                "Timed out waiting for '$testTag'. Semantics:\n" +
+                    rule.onRoot(useUnmergedTree = true).printToString(),
+                failure,
+            )
+        }
+    }
+
+    fun waitForText(text: String, useUnmergedTree: Boolean = false) {
+        try {
+            rule.waitUntil(timeoutMillis = 5_000) {
+                rule.onAllNodesWithText(text, useUnmergedTree).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            throw AssertionError(
+                "Timed out waiting for text '$text'. Semantics:\n" +
+                    rule.onRoot(useUnmergedTree = true).printToString(),
+                failure,
+            )
         }
     }
 

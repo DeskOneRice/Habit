@@ -14,8 +14,18 @@ import kotlinx.coroutines.launch
 data class CategoryUiState(val categories: List<Category> = emptyList(), val habitCounts: Map<Long, Int> = emptyMap())
 class CategoryViewModel(private val categories: CategoryRepository, habits: HabitRepository) : ViewModel() {
     val state: StateFlow<CategoryUiState> = combine(categories.observeAll(), habits.observeAll()) { groups, all -> CategoryUiState(groups, all.groupingBy { it.categoryId }.eachCount()) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CategoryUiState())
-    fun create(name: String) = viewModelScope.launch { if (name.trim().isNotEmpty()) categories.create(name) }
-    fun rename(id: Long, name: String) = viewModelScope.launch { if (name.trim().isNotEmpty()) categories.rename(id, name) }
+    fun create(name: String, onDone: () -> Unit) = viewModelScope.launch {
+        if (name.trim().isNotEmpty()) {
+            categories.create(name)
+            onDone()
+        }
+    }
+    fun rename(id: Long, name: String, onDone: () -> Unit) = viewModelScope.launch {
+        if (name.trim().isNotEmpty()) {
+            categories.rename(id, name)
+            onDone()
+        }
+    }
     fun setPresetHidden(id: Long, hidden: Boolean) = viewModelScope.launch { categories.setPresetHidden(id, hidden) }
     fun migrateAndDelete(source: Long, target: Long, onDone: () -> Unit) = viewModelScope.launch { if (source != target) { categories.migrateAndDelete(source, target); onDone() } }
 }
