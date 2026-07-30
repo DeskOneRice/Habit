@@ -10,16 +10,19 @@ import com.habit.app.domain.stats.MonthStats
 import com.habit.app.domain.time.DeviceDateProvider
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -170,10 +173,68 @@ class CalendarViewModelTest {
 
         assertEquals(null, viewModel.state.value.message)
     }
+
+    @Test
+    fun changedDeviceDateAndZoneRefreshBeforeSelectionAndToggle() = runTest(dispatcher) {
+        val initialToday = LocalDate.of(2031, 2, 3)
+        val refreshedToday = initialToday.plusDays(1)
+        val provider = MutableDateProvider(initialToday, ZoneId.of("UTC"))
+        val calendar = RecordingCalendarRepository()
+        val checkIns = RecordingCheckIns()
+        val viewModel = CalendarViewModel(calendar, checkIns, provider)
+        advanceUntilIdle()
+
+        provider.date = refreshedToday
+        provider.zone = ZoneId.of("Asia/Tokyo")
+        viewModel.selectDate(refreshedToday)
+        advanceUntilIdle()
+
+        assertEquals(refreshedToday, viewModel.today)
+        assertEquals(ZoneId.of("Asia/Tokyo"), viewModel.zoneId)
+        assertEquals(YearMonth.from(refreshedToday) to refreshedToday, calendar.monthCalls.last())
+        assertEquals(refreshedToday to refreshedToday, calendar.dayCalls.last())
+
+        viewModel.toggle(7)
+        advanceUntilIdle()
+
+        assertEquals(listOf(refreshedToday), checkIns.dates)
+        assertEquals(listOf(refreshedToday), checkIns.todays)
+    }
+
+    @Test
+    fun changingMonthClearsPreviousSnapshotUntilMatchingMonthArrives() = runTest(dispatcher) {
+        val today = LocalDate.of(2031, 2, 3)
+        val calendar = ControllableMonthCalendarRepository()
+        val viewModel = CalendarViewModel(calendar, ImmediateCheckIns, FixedDateProvider(today))
+        runCurrent()
+        calendar.emitMonth(YearMonth.of(2031, 2))
+        runCurrent()
+        assertEquals(YearMonth.of(2031, 2), viewModel.state.value.month?.month)
+
+        viewModel.nextMonth()
+        runCurrent()
+
+        assertEquals(YearMonth.of(2031, 3), viewModel.state.value.visibleMonth)
+        assertEquals(null, viewModel.state.value.month)
+
+        calendar.emitMonth(YearMonth.of(2031, 3))
+        runCurrent()
+        assertEquals(YearMonth.of(2031, 3), viewModel.state.value.month?.month)
+    }
 }
 
 private class FixedDateProvider(private val date: LocalDate) : DeviceDateProvider {
     override fun today(): LocalDate = date
+}
+
+private class MutableDateProvider(
+    var date: LocalDate,
+    var zone: ZoneId,
+) : DeviceDateProvider {
+    override fun today(): LocalDate = date
+
+    override val zoneId: ZoneId
+        get() = zone
 }
 
 private class RecordingCalendarRepository : CalendarRepository {
@@ -189,6 +250,26 @@ private class RecordingCalendarRepository : CalendarRepository {
         dayCalls += date to today
         return flowOf(DaySnapshot(date.toEpochDay(), emptyList()))
     }
+
+    override fun observeHabitHistory(
+        habitId: Long,
+        today: LocalDate,
+    ): Flow<HabitHistorySnapshot> = error("Not used")
+}
+
+private class ControllableMonthCalendarRepository : CalendarRepository {
+    private val monthFlows = mutableMapOf<YearMonth, MutableSharedFlow<MonthSnapshot>>()
+
+    suspend fun emitMonth(month: YearMonth) {
+        monthFlows.getOrPut(month) { MutableSharedFlow(replay = 1) }
+            .emit(MonthSnapshot(month, emptyMap(), MonthStats(0, 0, 0, 0f)))
+    }
+
+    override fun observeMonth(month: YearMonth, today: LocalDate): Flow<MonthSnapshot> =
+        monthFlows.getOrPut(month) { MutableSharedFlow(replay = 1) }
+
+    override fun observeDay(date: LocalDate, today: LocalDate): Flow<DaySnapshot> =
+        flowOf(DaySnapshot(date.toEpochDay(), emptyList()))
 
     override fun observeHabitHistory(
         habitId: Long,
@@ -260,6 +341,7 @@ private data object ImmediateCheckIns : CheckInRepository {
 
 private class RecordingCheckIns : CheckInRepository {
     val dates = mutableListOf<LocalDate>()
+    val todays = mutableListOf<LocalDate>()
 
     override suspend fun toggle(
         habitId: Long,
@@ -267,6 +349,7 @@ private class RecordingCheckIns : CheckInRepository {
         today: LocalDate,
     ): ToggleResult {
         dates += date
+        todays += today
         return ToggleResult.Checked
     }
 }

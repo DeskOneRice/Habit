@@ -7,11 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,21 +47,23 @@ fun MonthGrid(
             repeat(leadingEmptyCells) { add(null) }
             repeat(snapshot.month.lengthOfMonth()) { day -> add(snapshot.month.atDay(day + 1)) }
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(7),
-            modifier = Modifier.fillMaxWidth().height(350.dp),
-            userScrollEnabled = false,
-        ) {
-            items(cells) { date ->
-                if (date == null) {
-                    Box(Modifier.aspectRatio(1f))
-                } else {
-                    DayCell(
-                        date = date,
-                        marks = snapshot.marksByEpochDay[date.toEpochDay()].orEmpty(),
-                        selected = date == selectedDate,
-                        onClick = { onDateSelected(date) },
-                    )
+        cells.chunked(7).forEach { week ->
+            Row(Modifier.fillMaxWidth()) {
+                week.forEach { date ->
+                    if (date == null) {
+                        Box(Modifier.weight(1f).aspectRatio(1f))
+                    } else {
+                        DayCell(
+                            date = date,
+                            marks = snapshot.marksByEpochDay[date.toEpochDay()].orEmpty(),
+                            selected = date == selectedDate,
+                            onClick = { onDateSelected(date) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                repeat(7 - week.size) {
+                    Box(Modifier.weight(1f).aspectRatio(1f))
                 }
             }
         }
@@ -78,10 +76,11 @@ private fun DayCell(
     marks: List<CalendarMark>,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val sortedMarks = marks.sortedWith(compareBy(CalendarMark::sortOrder, CalendarMark::habitId))
     Column(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .testTag("day_$date")
             .clickable(onClick = onClick)
