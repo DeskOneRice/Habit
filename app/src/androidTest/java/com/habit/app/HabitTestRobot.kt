@@ -124,6 +124,10 @@ class HabitTestRobot(val rule: ComposeTestRule) {
         container.database.habitDao().getById(habitId)!!.themeColor
     }
 
+    fun habitId(name: String): Long = runBlocking {
+        container.database.habitDao().observeAll().first().single { it.name == name }.id
+    }
+
     private suspend fun insertHabit(
         name: String,
         iconKey: String,
