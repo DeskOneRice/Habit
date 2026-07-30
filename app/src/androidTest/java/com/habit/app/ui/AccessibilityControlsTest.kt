@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -27,11 +29,12 @@ class AccessibilityControlsTest {
 
     private val robot by lazy { HabitTestRobot(composeRule) }
     private var scenario: ActivityScenario<MainActivity>? = null
+    private var habitId: Long = 0
 
     @Before
     fun seedAndLaunch() {
         robot.resetDatabase()
-        robot.seedHabit(name = "无障碍审计", iconKey = "book")
+        habitId = robot.seedHabit(name = "无障碍审计", iconKey = "book")
         scenario = ActivityScenario.launch(MainActivity::class.java)
         robot.waitForTag("calendar_screen")
     }
@@ -43,11 +46,23 @@ class AccessibilityControlsTest {
 
     @Test
     fun everyMvpIconOnlyControlHasChineseDescriptionAnd48DpTarget() {
+        scenario!!.onActivity { activity ->
+            assertEquals(360, activity.resources.configuration.screenWidthDp)
+        }
         assertAccessibleTag("calendar_previous_month", "上个月")
         assertAccessibleTag("calendar_next_month", "下个月")
 
         composeRule.onNodeWithTag("day_${robot.today()}").performClick()
         assertAccessibleTag("day_checkin_close", "关闭日期打卡面板")
+        assertAccessibleTag("checkin_habit_$habitId", "为无障碍审计补签")
+        composeRule.onNodeWithTag("checkin_habit_$habitId").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule
+                .onAllNodesWithContentDescription("取消无障碍审计的打卡")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        assertAccessibleTag("checkin_habit_$habitId", "取消无障碍审计的打卡")
         composeRule.onNodeWithTag("day_checkin_close").performClick()
 
         robot.navigateTo("习惯")

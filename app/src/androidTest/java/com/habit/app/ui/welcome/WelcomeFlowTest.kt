@@ -63,6 +63,9 @@ class WelcomeFlowTest {
 
         pressBackUnconditionally()
 
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            !composeRule.activityRule.scenario.state.isAtLeast(Lifecycle.State.STARTED)
+        }
         assertTrue(
             "Back should finish the onboarding task instead of revealing welcome/editor",
             !composeRule.activityRule.scenario.state.isAtLeast(Lifecycle.State.STARTED),

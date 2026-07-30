@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +51,7 @@ fun MonthGrid(
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { date ->
                     if (date == null) {
-                        Box(Modifier.weight(1f).aspectRatio(1f))
+                        Box(Modifier.weight(1f).height(56.dp))
                     } else {
                         DayCell(
                             date = date,
@@ -63,7 +63,7 @@ fun MonthGrid(
                     }
                 }
                 repeat(7 - week.size) {
-                    Box(Modifier.weight(1f).aspectRatio(1f))
+                    Box(Modifier.weight(1f).height(56.dp))
                 }
             }
         }
@@ -81,10 +81,10 @@ private fun DayCell(
     val sortedMarks = marks.sortedWith(compareBy(CalendarMark::sortOrder, CalendarMark::habitId))
     Column(
         modifier = modifier
-            .aspectRatio(1f)
+            .height(56.dp)
             .testTag("day_$date")
             .clickable(onClick = onClick)
-            .padding(2.dp),
+            .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -99,8 +99,14 @@ private fun DayCell(
             sortedMarks.take(4).forEachIndexed { index, mark ->
                 Text(
                     text = habitEmoji(mark.iconKey),
-                    fontSize = 10.sp,
-                    modifier = Modifier.testTag("day_${date}_mark_$index"),
+                    fontSize = 9.sp,
+                    lineHeight = 9.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("day_${date}_mark_$index"),
                 )
             }
         }
@@ -109,6 +115,7 @@ private fun DayCell(
             Text(
                 text = "+$overflow",
                 fontSize = 9.sp,
+                lineHeight = 9.sp,
                 modifier = Modifier.testTag("day_${date}_overflow"),
             )
         }

@@ -2,8 +2,8 @@ package com.habit.app.ui.calendar
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -11,18 +11,23 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.habit.app.domain.model.CalendarMark
 import com.habit.app.domain.model.MonthSnapshot
 import com.habit.app.domain.stats.MonthStats
 import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
 import java.time.LocalDate
 import java.time.YearMonth
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,14 +38,11 @@ class MonthGridLayoutTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun sixWeekMonthAndSummaryAreReachableAt480DpInShortViewport() {
+    fun sixWeekMonthAndSummaryAreReachableAt360DpInShortViewport() {
         val month = YearMonth.of(2031, 3)
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
-                Column(
-                    Modifier
-                        .requiredWidth(480.dp),
-                ) {
+                Column(Modifier.fillMaxWidth()) {
                     Box(Modifier.testTag("layout_test_grid")) {
                         MonthGrid(
                             snapshot = MonthSnapshot(
@@ -57,7 +59,7 @@ class MonthGridLayoutTest {
             }
         }
 
-        composeRule.onNodeWithTag("layout_test_grid").assertHeightIsAtLeast(400.dp)
+        composeRule.onNodeWithTag("layout_test_grid").assertHeightIsAtLeast(336.dp)
         composeRule.onNodeWithTag("day_2031-03-31").assertIsDisplayed()
         composeRule.onNodeWithTag("layout_test_summary")
             .assertIsDisplayed()
@@ -66,6 +68,19 @@ class MonthGridLayoutTest {
     @Test
     fun cellsRemainLegibleAndReachableAt360DpAnd130PercentFontScale() {
         val month = YearMonth.of(2031, 3)
+        val markedDate = LocalDate.of(2031, 3, 3)
+        val marks = listOf("book", "sprout", "run", "heart", "water")
+            .mapIndexed { index, iconKey ->
+                CalendarMark(iconKey = iconKey, habitId = index.toLong(), sortOrder = index)
+            }
+        assertEquals(
+            360,
+            InstrumentationRegistry.getInstrumentation()
+                .targetContext
+                .resources
+                .configuration
+                .screenWidthDp,
+        )
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(
@@ -74,13 +89,13 @@ class MonthGridLayoutTest {
                 HabitTheme(HabitThemeId.SKY_BLUE) {
                     Box(
                         Modifier
-                            .requiredWidth(360.dp)
+                            .fillMaxWidth()
                             .padding(horizontal = 12.dp),
                     ) {
                         MonthGrid(
                             snapshot = MonthSnapshot(
                                 month = month,
-                                marksByEpochDay = emptyMap(),
+                                marksByEpochDay = mapOf(markedDate.toEpochDay() to marks),
                                 stats = MonthStats(0, 0, 0, 0f),
                             ),
                             selectedDate = LocalDate.of(2031, 3, 1),
@@ -96,5 +111,29 @@ class MonthGridLayoutTest {
             .assertHeightIsAtLeast(48.dp)
             .assertIsDisplayed()
         composeRule.onNodeWithTag("day_2031-03-31").assertIsDisplayed()
+        composeRule.onNodeWithTag("day_2031-03-03").assertIsDisplayed()
+        composeRule.onNodeWithTag("day_2031-03-02").assertIsDisplayed()
+
+        listOf("📚", "🌱", "🏃", "💛").forEachIndexed { index, emoji ->
+            composeRule.onNodeWithTag("day_${markedDate}_mark_$index", useUnmergedTree = true)
+                .assertTextEquals(emoji)
+                .assertIsDisplayed()
+        }
+        composeRule.onNodeWithTag("day_${markedDate}_overflow", useUnmergedTree = true)
+            .assertTextEquals("+1")
+            .assertIsDisplayed()
+
+        val leftEdge = composeRule.onNodeWithTag("day_2031-03-03")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val rightEdge = composeRule.onNodeWithTag("day_2031-03-02")
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val viewportWidthPx = with(composeRule.density) { 360.dp.toPx() }
+        assertTrue("Monday cell must stay inside the left grid edge", leftEdge.left >= 0f)
+        assertTrue(
+            "Sunday cell must stay inside the right grid edge",
+            rightEdge.right <= viewportWidthPx,
+        )
     }
 }

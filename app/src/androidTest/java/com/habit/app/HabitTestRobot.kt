@@ -85,6 +85,35 @@ class HabitTestRobot(val rule: ComposeTestRule) {
         }
     }
 
+    fun seedCustomCategories(count: Int, namePrefix: String = "自定义分类"): List<Long> = runBlocking {
+        repeat(count) { index ->
+            container.database.categoryDao().insert(
+                CategoryEntity(
+                    name = "$namePrefix ${index + 1}",
+                    isPreset = false,
+                    isHidden = false,
+                    sortOrder = 100 + index,
+                    createdAt = 500L + index,
+                    updatedAt = 500L + index,
+                ),
+            )
+        }.let {
+            container.database.categoryDao()
+                .observeAll()
+                .first()
+                .filter { category -> category.name.startsWith(namePrefix) }
+                .map(CategoryEntity::id)
+        }
+    }
+
+    fun moveHabitToCategory(habitId: Long, categoryId: Long) = runBlocking {
+        container.database.habitDao().reassignCategory(
+            habitId = habitId,
+            categoryId = categoryId,
+            updatedAt = 900L,
+        )
+    }
+
     fun seedCompletedHabits(date: LocalDate, iconKeys: List<String>): List<Long> = runBlocking {
         val category = container.database.categoryDao().observeVisible().first().first()
         iconKeys.mapIndexed { index, iconKey ->

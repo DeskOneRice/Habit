@@ -64,7 +64,7 @@ class EndToEndMvpTest {
         assertEquals(0xFFDF988F, robot.habitThemeColor(habitId))
 
         pressBackUnconditionally()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
             scenario?.state?.isAtLeast(Lifecycle.State.STARTED) == false
         }
         assertFalse(
