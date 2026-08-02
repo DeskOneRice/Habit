@@ -24,6 +24,7 @@ data class ExportResult(
     val categories: Int,
     val habits: Int,
     val checkIns: Int,
+    val mealRecords: Int = 0,
 )
 
 data class ImportPreview(val backup: HabitBackup) {
@@ -79,6 +80,10 @@ class HabitBackupService(
             categories = database.categories,
             habits = database.habits,
             checkIns = database.checkIns,
+            mealRecords = database.mealRecords,
+            foodItems = database.foodItems,
+            beverageDetails = database.beverageDetails,
+            beverageToppings = database.beverageToppings,
             preferences = preferenceSnapshot.content.preferences,
         )
         val fileName = "Habit-Backup-${FILE_TIME_FORMAT.format(Instant.ofEpochMilli(now))}.habitbackup.json"
@@ -87,7 +92,7 @@ class HabitBackupService(
             fileName,
             HabitBackupCodec.encode(backup).encodeToByteArray(),
         )
-        return ExportResult(fileName, backup.categories.size, backup.habits.size, backup.checkIns.size)
+        return ExportResult(fileName, backup.categories.size, backup.habits.size, backup.checkIns.size, backup.mealRecords.size)
     }
 
     override suspend fun preview(uri: String): ImportPreview = withContext(Dispatchers.IO) {

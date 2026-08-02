@@ -77,6 +77,7 @@ object BackupMerger {
             }
         }
 
+        val diet = mergeDiet(current, imported)
         val importedPreferencesAreNewer = imported.preferencesUpdatedAt > current.preferencesUpdatedAt
         return current.copy(
             appVersion = imported.appVersion,
@@ -89,9 +90,78 @@ object BackupMerger {
             categories = categories.sortedBy(BackupCategory::id),
             habits = habits.sortedBy(BackupHabit::id),
             checkIns = checkIns.sortedBy(BackupCheckIn::id),
+            mealRecords = diet.records,
+            foodItems = diet.foodItems,
+            beverageDetails = diet.beverages,
+            beverageToppings = diet.toppings,
             preferences = if (importedPreferencesAreNewer) imported.preferences else current.preferences,
         )
     }
+}
+
+private data class MergedDiet(
+    val records: List<BackupMealRecord>,
+    val foodItems: List<BackupFoodItem>,
+    val beverages: List<BackupBeverageDetail>,
+    val toppings: List<BackupBeverageTopping>,
+)
+
+private fun mergeDiet(current: HabitBackup, imported: HabitBackup): MergedDiet {
+    val records = current.mealRecords.toMutableList()
+    val usedRecordIds = records.mapTo(mutableSetOf(), BackupMealRecord::id)
+    var nextRecordId = (usedRecordIds.maxOrNull() ?: 0L) + 1
+    val recordMap = mutableMapOf<Long, Long>()
+    val replaced = mutableSetOf<Long>()
+    imported.mealRecords.forEach { incoming ->
+        val index = records.indexOfFirst { it.id == incoming.id && it.createdAt == incoming.createdAt }
+        if (index >= 0) {
+            val existing = records[index]
+            recordMap[incoming.id] = existing.id
+            if (incoming.updatedAt > existing.updatedAt) {
+                records[index] = incoming.copy(id = existing.id)
+                replaced += existing.id
+            }
+        } else {
+            val target = availableId(incoming.id, usedRecordIds) { nextRecordId++ }
+            records += incoming.copy(id = target)
+            recordMap[incoming.id] = target
+            replaced += target
+        }
+    }
+
+    val food = current.foodItems.filterNot { it.mealRecordId in replaced }.toMutableList()
+    val usedFoodIds = food.mapTo(mutableSetOf(), BackupFoodItem::id)
+    var nextFoodId = (usedFoodIds.maxOrNull() ?: 0L) + 1
+    imported.foodItems.forEach { incoming ->
+        val parent = recordMap[incoming.mealRecordId] ?: return@forEach
+        if (parent in replaced) {
+            val id = availableId(incoming.id, usedFoodIds) { nextFoodId++ }
+            food += incoming.copy(id = id, mealRecordId = parent)
+        }
+    }
+
+    val beverages = current.beverageDetails.filterNot { it.mealRecordId in replaced }.toMutableList()
+    imported.beverageDetails.forEach { incoming ->
+        val parent = recordMap[incoming.mealRecordId] ?: return@forEach
+        if (parent in replaced) beverages += incoming.copy(mealRecordId = parent)
+    }
+
+    val toppings = current.beverageToppings.filterNot { it.mealRecordId in replaced }.toMutableList()
+    val usedToppingIds = toppings.mapTo(mutableSetOf(), BackupBeverageTopping::id)
+    var nextToppingId = (usedToppingIds.maxOrNull() ?: 0L) + 1
+    imported.beverageToppings.forEach { incoming ->
+        val parent = recordMap[incoming.mealRecordId] ?: return@forEach
+        if (parent in replaced) {
+            val id = availableId(incoming.id, usedToppingIds) { nextToppingId++ }
+            toppings += incoming.copy(id = id, mealRecordId = parent)
+        }
+    }
+    return MergedDiet(
+        records.sortedBy(BackupMealRecord::id),
+        food.sortedBy(BackupFoodItem::id),
+        beverages.sortedBy(BackupBeverageDetail::mealRecordId),
+        toppings.sortedBy(BackupBeverageTopping::id),
+    )
 }
 
 private inline fun availableId(requested: Long, used: MutableSet<Long>, next: () -> Long): Long {

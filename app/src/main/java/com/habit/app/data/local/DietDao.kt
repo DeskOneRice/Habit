@@ -43,6 +43,9 @@ interface DietDao {
     @Insert
     suspend fun insertRecord(record: MealRecordEntity): Long
 
+    @Insert
+    suspend fun insertRecords(records: List<MealRecordEntity>)
+
     @Update
     suspend fun updateRecord(record: MealRecordEntity): Int
 
@@ -51,6 +54,9 @@ interface DietDao {
 
     @Insert
     suspend fun insertBeverage(details: BeverageDetailEntity)
+
+    @Insert
+    suspend fun insertBeverages(details: List<BeverageDetailEntity>)
 
     @Insert
     suspend fun insertToppings(items: List<BeverageToppingEntity>)

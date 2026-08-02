@@ -2,6 +2,7 @@ package com.habit.app.data.backup
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HabitBackupCodecTest {
@@ -32,6 +33,34 @@ class HabitBackupCodecTest {
         assertThrows(InvalidBackupException::class.java) {
             HabitBackupCodec.validate(invalid)
         }
+    }
+
+    @Test
+    fun schemaOneBackupDecodesWithEmptyDietData() {
+        val legacy = HabitBackupCodec.encode(sampleBackup()).replace("\"schemaVersion\":2", "\"schemaVersion\":1")
+            .replace(Regex(",\"mealRecords\":\\[.*?],\"foodItems\":\\[.*?],\"beverageDetails\":\\[.*?],\"beverageToppings\":\\[.*?]"), "")
+
+        val decoded = HabitBackupCodec.decode(legacy)
+
+        assertTrue(decoded.mealRecords.isEmpty())
+    }
+
+    @Test
+    fun schemaTwoRoundTripPreservesDrinkDetails() {
+        val source = sampleBackup().copy(
+            mealRecords = listOf(
+                BackupMealRecord(1, "BEVERAGE", null, 200, 20, "", null, 260, "MANUAL", "", 100, 100),
+            ),
+            beverageDetails = listOf(
+                BackupBeverageDetail(1, "MILK_TEA", "茶铺", "奶茶", "中杯", "冷", "少冰", "三分糖", 1),
+            ),
+            beverageToppings = listOf(BackupBeverageTopping(1, 1, "珍珠", 0, 100, 100)),
+        )
+
+        val decoded = HabitBackupCodec.decode(HabitBackupCodec.encode(source))
+
+        assertEquals("少冰", decoded.beverageDetails.single().iceLevel)
+        assertEquals("珍珠", decoded.beverageToppings.single().name)
     }
 
     private fun sampleBackup() = HabitBackup(

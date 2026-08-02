@@ -15,6 +15,7 @@ import com.habit.app.data.backup.RoomBackupRepository
 import com.habit.app.data.preferences.ThemePreferencesRepository
 import com.habit.app.data.preferences.EmojiPreferencesRepository
 import com.habit.app.data.preferences.BackupPreferencesRepository
+import com.habit.app.data.preferences.DietPreferencesRepository
 import com.habit.app.data.repository.RoomCalendarRepository
 import com.habit.app.data.repository.RoomCategoryRepository
 import com.habit.app.data.repository.RoomCheckInRepository
@@ -59,6 +60,7 @@ class AppContainer(
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)
+    val dietPreferencesRepository = DietPreferencesRepository(applicationContext.themeDataStore, clock)
     private val backupDocumentStore = AndroidBackupDocumentStore(applicationContext)
     private val roomBackupRepository = RoomBackupRepository(database)
     val backupOperations = HabitBackupService(

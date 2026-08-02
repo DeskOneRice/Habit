@@ -39,6 +39,8 @@ class BackupPreferencesRepository(private val dataStore: DataStore<Preferences>)
                 preferences = BackupPreferences(
                     themeId = HabitThemeId.fromStored(values[themeKey]).name.lowercase(),
                     recentEmojiKeys = decodeRecent(values[recentEmojiKey]),
+                    dailyCalorieGoalEnabled = values[dailyCalorieGoalEnabledKey] ?: false,
+                    dailyCalorieGoalKcal = values[dailyCalorieGoalKcalKey],
                 ),
                 updatedAt = values[preferencesUpdatedAtKey] ?: 0L,
             ),
@@ -56,6 +58,9 @@ class BackupPreferencesRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { values ->
             values[themeKey] = content.preferences.themeId.uppercase()
             values[recentEmojiKey] = encodeRecent(content.preferences.recentEmojiKeys)
+            values[dailyCalorieGoalEnabledKey] = content.preferences.dailyCalorieGoalEnabled
+            content.preferences.dailyCalorieGoalKcal?.let { values[dailyCalorieGoalKcalKey] = it }
+                ?: values.remove(dailyCalorieGoalKcalKey)
             values[preferencesUpdatedAtKey] = content.updatedAt
         }
     }
