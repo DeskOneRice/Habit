@@ -60,3 +60,89 @@ data class CheckInEntity(
     val createdAt: Long,
     val updatedAt: Long,
 )
+
+@Entity(
+    tableName = "meal_records",
+    indices = [Index("recordEpochDay"), Index("occurredAt")],
+)
+data class MealRecordEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val recordType: String,
+    val mealType: String?,
+    val occurredAt: Long,
+    val recordEpochDay: Long,
+    val description: String,
+    val calculatedCalories: Int?,
+    val finalCalories: Int?,
+    val calorieSource: String,
+    val note: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "food_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = MealRecordEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["mealRecordId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("mealRecordId")],
+)
+data class FoodItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val mealRecordId: Long,
+    val name: String,
+    val portionText: String?,
+    val calories: Int?,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "beverage_details",
+    foreignKeys = [
+        ForeignKey(
+            entity = MealRecordEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["mealRecordId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class BeverageDetailEntity(
+    @PrimaryKey val mealRecordId: Long,
+    val category: String,
+    val brandOrStore: String,
+    val beverageName: String,
+    val sizeOrVolume: String,
+    val temperature: String,
+    val iceLevel: String,
+    val sweetness: String,
+    val cupCount: Int,
+)
+
+@Entity(
+    tableName = "beverage_toppings",
+    foreignKeys = [
+        ForeignKey(
+            entity = MealRecordEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["mealRecordId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("mealRecordId")],
+)
+data class BeverageToppingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val mealRecordId: Long,
+    val name: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
