@@ -15,9 +15,8 @@ import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.data.preferences.EmojiPreferencesRepository
 import com.habit.app.ui.components.EmojiPicker
 import com.habit.app.ui.components.HabitColorPicker
-import java.time.Instant
+import com.habit.app.ui.components.HabitDatePickerDialog
 import java.time.LocalDate
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -62,42 +61,14 @@ fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepos
     }
     }
     if (showStartDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = LocalDate
-                .ofEpochDay(state.startEpochDay)
-                .atStartOfDay(ZoneOffset.UTC)
-                .toInstant()
-                .toEpochMilli(),
+        HabitDatePickerDialog(
+            selectedDate = LocalDate.ofEpochDay(state.startEpochDay),
+            onConfirm = { selectedDate ->
+                viewModel.onStartDateChange(selectedDate.toEpochDay())
+                showStartDatePicker = false
+            },
+            onDismiss = { showStartDatePicker = false },
         )
-        DatePickerDialog(
-            onDismissRequest = { showStartDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pickerState.selectedDateMillis?.let { selectedMillis ->
-                            viewModel.onStartDateChange(
-                                Instant
-                                    .ofEpochMilli(selectedMillis)
-                                    .atZone(ZoneOffset.UTC)
-                                    .toLocalDate()
-                                    .toEpochDay(),
-                            )
-                        }
-                        showStartDatePicker = false
-                    },
-                ) {
-                    Text("确定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStartDatePicker = false }) {
-                    Text("取消")
-                }
-            },
-            modifier = Modifier.testTag("start_date_dialog"),
-        ) {
-            DatePicker(state = pickerState)
-        }
     }
     if (showArchive) AlertDialog(onDismissRequest = { showArchive = false }, title = { Text("归档习惯？") }, text = { Text("归档后不会出现在当前习惯中。") }, confirmButton = { Button({ state.habitId?.let(onArchive); showArchive = false }, Modifier.testTag("archive_confirm")) { Text("确认归档") } }, dismissButton = { TextButton({ showArchive = false }) { Text("取消") } })
     if (deleteStage == 1) AlertDialog(onDismissRequest = { deleteStage = 0 }, title = { Text("删除习惯？") }, text = { Text("删除后，所有历史打卡记录都会被删除。", Modifier.testTag("delete_history_warning")) }, confirmButton = { Button({ deleteStage = 2 }, Modifier.testTag("delete_continue")) { Text("继续") } }, dismissButton = { TextButton({ deleteStage = 0 }) { Text("取消") } })
