@@ -15,11 +15,17 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE isHidden = 0 ORDER BY sortOrder, id")
     fun observeVisible(): Flow<List<CategoryEntity>>
 
+    @Query("SELECT * FROM categories ORDER BY id")
+    suspend fun getAll(): List<CategoryEntity>
+
     @Query("SELECT * FROM categories WHERE id = :categoryId")
     suspend fun getById(categoryId: Long): CategoryEntity?
 
     @Insert
     suspend fun insert(entity: CategoryEntity): Long
+
+    @Insert
+    suspend fun insertAll(entities: List<CategoryEntity>): List<Long>
 
     @Update
     suspend fun update(entity: CategoryEntity): Int
@@ -29,6 +35,9 @@ interface CategoryDao {
 
     @Query("DELETE FROM categories WHERE id = :categoryId")
     suspend fun deleteById(categoryId: Long): Int
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAll(): Int
 
     @Query("UPDATE habits SET categoryId = :toCategoryId, updatedAt = :updatedAt WHERE categoryId = :fromCategoryId")
     suspend fun reassignHabits(fromCategoryId: Long, toCategoryId: Long, updatedAt: Long): Int

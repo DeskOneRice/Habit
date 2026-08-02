@@ -14,6 +14,9 @@ interface HabitDao {
     @Query("SELECT * FROM habits WHERE archivedEpochDay IS NULL ORDER BY sortOrder, id")
     fun observeActive(): Flow<List<HabitEntity>>
 
+    @Query("SELECT * FROM habits ORDER BY id")
+    suspend fun getAll(): List<HabitEntity>
+
     @Query("SELECT * FROM habits WHERE id = :habitId")
     fun observeById(habitId: Long): Flow<HabitEntity?>
 
@@ -22,6 +25,9 @@ interface HabitDao {
 
     @Insert
     suspend fun insert(entity: HabitEntity): Long
+
+    @Insert
+    suspend fun insertAll(entities: List<HabitEntity>): List<Long>
 
     @Update
     suspend fun update(entity: HabitEntity): Int
@@ -34,4 +40,7 @@ interface HabitDao {
 
     @Query("DELETE FROM habits WHERE id = :habitId")
     suspend fun deleteById(habitId: Long): Int
+
+    @Query("DELETE FROM habits")
+    suspend fun deleteAll(): Int
 }
