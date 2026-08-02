@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.repository.CategoryRepository
+import com.habit.app.data.preferences.EmojiPreferencesRepository
 import com.habit.app.ui.components.EmojiPicker
 import com.habit.app.ui.components.HabitColorPicker
 import java.time.Instant
@@ -19,25 +20,30 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.NavigationMode
 
 private val startDateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日")
 
 @Composable
-fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepository, onSaved: () -> Unit, onBack: () -> Unit, onArchive: (Long) -> Unit, onDelete: (Long) -> Unit) {
+fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepository, emojiPreferences: EmojiPreferencesRepository, onSaved: () -> Unit, onBack: () -> Unit, onArchive: (Long) -> Unit, onDelete: (Long) -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val errorRequester = remember { BringIntoViewRequester() }
     var groups by remember { mutableStateOf(emptyList<com.habit.app.domain.model.Category>()) }
+    val recentEmojiKeys by emojiPreferences.recentEmojiKeys.collectAsStateWithLifecycle(initialValue = emptyList())
+    val scope = rememberCoroutineScope()
     LaunchedEffect(categories) { categories.observeVisible().collectLatest { groups = it } }
     LaunchedEffect(state.nameError) { if (state.nameError != null) errorRequester.bringIntoView() }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showArchive by remember { mutableStateOf(false) }; var deleteStage by remember { mutableStateOf(0) }
     Scaffold(bottomBar = { Button({ viewModel.save(onSaved) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 20.dp).testTag("save_habit"), enabled = !state.saving) { Text(if (state.saving) "保存中…" else "保存") } }) { contentPadding ->
     Column(Modifier.fillMaxSize().padding(contentPadding).verticalScroll(scrollState).padding(20.dp).testTag("habit_editor_screen"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(if (state.habitId == null) "新建习惯" else "编辑习惯", style = MaterialTheme.typography.headlineSmall)
+        HabitTopAppBar(if (state.habitId == null) "新建习惯" else "编辑习惯", NavigationMode.BACK, onBack)
         state.nameError?.let { Text(it, modifier = Modifier.bringIntoViewRequester(errorRequester).testTag("habit_name_error"), color = MaterialTheme.colorScheme.error) }
         OutlinedTextField(state.name, viewModel::onNameChange, Modifier.fillMaxWidth().testTag("habit_name"), label = { Text("习惯名称") }, singleLine = true)
-        Text("选择图标"); EmojiPicker(state.iconKey, viewModel::onEmojiChange)
+        Text("选择图标"); EmojiPicker(state.iconKey, recentEmojiKeys) { key -> viewModel.onEmojiChange(key); scope.launch { emojiPreferences.record(key) } }
         Text("识别颜色"); HabitColorPicker(state.themeColor, viewModel::onColorChange)
         Text("分类")
         groups.forEach { category -> FilterChip(selected = state.categoryId == category.id, onClick = { viewModel.onCategoryChange(category.id) }, label = { Text(category.name) }) }

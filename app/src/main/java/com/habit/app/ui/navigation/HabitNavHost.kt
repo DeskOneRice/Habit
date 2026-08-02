@@ -85,6 +85,7 @@ fun HabitNavHost(
             HabitEditorScreen(
                 viewModel = model,
                 categories = container.categoryRepository,
+                emojiPreferences = container.emojiPreferencesRepository,
                 onSaved = {
                     if (habitId == null) {
                         if (
