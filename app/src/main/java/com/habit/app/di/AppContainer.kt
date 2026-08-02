@@ -7,6 +7,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.PresetCategoryCallback
+import com.habit.app.data.backup.AndroidBackupDocumentStore
+import com.habit.app.data.backup.BackupFolderMigrator
+import com.habit.app.data.backup.HabitBackupService
+import com.habit.app.data.backup.RoomBackupRepository
 import com.habit.app.data.preferences.ThemePreferencesRepository
 import com.habit.app.data.preferences.EmojiPreferencesRepository
 import com.habit.app.data.preferences.BackupPreferencesRepository
@@ -51,4 +55,14 @@ class AppContainer(
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)
+    private val backupDocumentStore = AndroidBackupDocumentStore(applicationContext)
+    private val roomBackupRepository = RoomBackupRepository(database)
+    val backupOperations = HabitBackupService(
+        context = applicationContext,
+        roomRepository = roomBackupRepository,
+        preferencesRepository = backupPreferencesRepository,
+        documentStore = backupDocumentStore,
+        folderMigrator = BackupFolderMigrator(backupDocumentStore),
+        clock = clock,
+    )
 }

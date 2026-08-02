@@ -35,7 +35,11 @@ class RoomBackupRepository(private val database: HabitDatabase) {
             val target = when (mode) {
                 ImportMode.REPLACE -> backup
                 ImportMode.MERGE -> {
-                    val current = exportDatabase().toHabitBackup(backup)
+                    val current = BackupDatabaseSnapshot(
+                        categories = database.categoryDao().getAll().map(CategoryEntity::toBackup),
+                        habits = database.habitDao().getAll().map(HabitEntity::toBackup),
+                        checkIns = database.checkInDao().getAll().map(CheckInEntity::toBackup),
+                    ).toHabitBackup(backup)
                     BackupMerger.merge(current, backup)
                 }
             }

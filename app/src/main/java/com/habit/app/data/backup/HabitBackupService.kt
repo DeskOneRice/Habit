@@ -1,0 +1,145 @@
+package com.habit.app.data.backup
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
+import com.habit.app.data.preferences.BackupFolder
+import com.habit.app.data.preferences.BackupPreferencesRepository
+import com.habit.app.data.preferences.DEFAULT_BACKUP_LABEL
+import com.habit.app.data.preferences.TimestampedBackupPreferences
+import com.habit.app.data.preferences.choosePreferences
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+data class ExportResult(
+    val fileName: String,
+    val categories: Int,
+    val habits: Int,
+    val checkIns: Int,
+)
+
+data class ImportPreview(val backup: HabitBackup) {
+    val categories: Int get() = backup.categories.size
+    val habits: Int get() = backup.habits.size
+    val checkIns: Int get() = backup.checkIns.size
+}
+
+data class ImportResult(val summary: ImportSummary)
+
+sealed interface FolderChangeResult {
+    data class Success(val displayName: String, val migratedFiles: Int) : FolderChangeResult
+    data class Failed(val message: String) : FolderChangeResult
+}
+
+interface BackupOperations {
+    val backupLocation: Flow<String>
+    suspend fun export(): ExportResult
+    suspend fun preview(uri: String): ImportPreview
+    suspend fun import(preview: ImportPreview, mode: ImportMode): ImportResult
+    suspend fun changeFolder(uri: String): FolderChangeResult
+}
+
+class HabitBackupService(
+    context: Context,
+    private val roomRepository: RoomBackupRepository,
+    private val preferencesRepository: BackupPreferencesRepository,
+    private val documentStore: BackupDocumentStore,
+    private val folderMigrator: BackupFolderMigrator,
+    private val clock: Clock = Clock.systemUTC(),
+    private val appVersion: String = "0.2.1",
+) : BackupOperations {
+    private val applicationContext = context.applicationContext
+    private val resolver = applicationContext.contentResolver
+
+    override val backupLocation: Flow<String> = preferencesRepository.snapshot
+        .map { snapshot ->
+            when (val folder = snapshot.folder) {
+                BackupFolder.Default -> DEFAULT_BACKUP_LABEL
+                is BackupFolder.Tree -> folder.displayName
+            }
+        }
+        .distinctUntilChanged()
+
+    override suspend fun export(): ExportResult {
+        val preferenceSnapshot = preferencesRepository.current()
+        val database = roomRepository.exportDatabase()
+        val now = clock.millis()
+        val backup = HabitBackup(
+            appVersion = appVersion,
+            exportedAt = now,
+            preferencesUpdatedAt = preferenceSnapshot.content.updatedAt,
+            categories = database.categories,
+            habits = database.habits,
+            checkIns = database.checkIns,
+            preferences = preferenceSnapshot.content.preferences,
+        )
+        val fileName = "Habit-Backup-${FILE_TIME_FORMAT.format(Instant.ofEpochMilli(now))}.habitbackup.json"
+        documentStore.write(
+            preferenceSnapshot.folder,
+            fileName,
+            HabitBackupCodec.encode(backup).encodeToByteArray(),
+        )
+        return ExportResult(fileName, backup.categories.size, backup.habits.size, backup.checkIns.size)
+    }
+
+    override suspend fun preview(uri: String): ImportPreview = withContext(Dispatchers.IO) {
+        val content = resolver.openInputStream(Uri.parse(uri))?.bufferedReader()?.use { it.readText() }
+            ?: error("无法读取所选备份")
+        ImportPreview(HabitBackupCodec.decode(content))
+    }
+
+    override suspend fun import(preview: ImportPreview, mode: ImportMode): ImportResult {
+        val current = preferencesRepository.current().content
+        val imported = TimestampedBackupPreferences(
+            preview.backup.preferences,
+            preview.backup.preferencesUpdatedAt,
+        )
+        val summary = roomRepository.importDatabase(preview.backup, mode)
+        preferencesRepository.restore(
+            if (mode == ImportMode.REPLACE) imported else choosePreferences(current, imported),
+        )
+        return ImportResult(summary)
+    }
+
+    override suspend fun changeFolder(uri: String): FolderChangeResult {
+        val parsed = Uri.parse(uri)
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        return try {
+            resolver.takePersistableUriPermission(parsed, flags)
+            val displayName = DocumentFile.fromTreeUri(applicationContext, parsed)?.name
+                ?: parsed.lastPathSegment
+                ?: "自定义备份目录"
+            val newFolder = BackupFolder.Tree(uri, displayName)
+            val oldFolder = preferencesRepository.current().folder
+            when (val migrated = folderMigrator.migrate(oldFolder, newFolder)) {
+                is FolderMigrationResult.Success -> {
+                    preferencesRepository.setFolder(newFolder)
+                    if (oldFolder is BackupFolder.Tree && oldFolder.uri != uri) {
+                        runCatching { resolver.releasePersistableUriPermission(Uri.parse(oldFolder.uri), flags) }
+                    }
+                    FolderChangeResult.Success(displayName, migrated.migratedFiles)
+                }
+                is FolderMigrationResult.Failed -> {
+                    runCatching { resolver.releasePersistableUriPermission(parsed, flags) }
+                    FolderChangeResult.Failed("迁移失败，旧备份未删除")
+                }
+            }
+        } catch (error: Exception) {
+            FolderChangeResult.Failed(error.message ?: "无法使用所选目录")
+        }
+    }
+
+    private companion object {
+        val FILE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter
+            .ofPattern("yyyyMMdd-HHmmss")
+            .withZone(ZoneOffset.UTC)
+    }
+}

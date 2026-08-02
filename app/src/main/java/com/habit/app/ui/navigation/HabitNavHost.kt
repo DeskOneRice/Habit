@@ -235,5 +235,5 @@ private class SettingsFactory(
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        SettingsViewModel(container.themeRepository) as T
+        SettingsViewModel(container.themeRepository, container.backupOperations) as T
 }

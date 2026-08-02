@@ -2,6 +2,11 @@ package com.habit.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.habit.app.data.backup.BackupOperations
+import com.habit.app.data.backup.FolderChangeResult
+import com.habit.app.data.backup.ImportMode
+import com.habit.app.data.backup.ImportPreview
+import com.habit.app.data.preferences.DEFAULT_BACKUP_LABEL
 import com.habit.app.ui.theme.HabitThemeId
 import com.habit.app.ui.theme.ThemeRepository
 import kotlinx.coroutines.CancellationException
@@ -9,25 +14,38 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val selectedTheme: HabitThemeId = HabitThemeId.SKY_BLUE,
+    val backupLocation: String = DEFAULT_BACKUP_LABEL,
+    val busy: Boolean = false,
+    val importPreview: ImportPreview? = null,
     val message: String? = null,
 )
 
 class SettingsViewModel(
     private val themeRepository: ThemeRepository,
+    private val backupOperations: BackupOperations? = null,
 ) : ViewModel() {
     private val message = MutableStateFlow<String?>(null)
+    private val busy = MutableStateFlow(false)
+    private val importPreview = MutableStateFlow<ImportPreview?>(null)
 
     val state: StateFlow<SettingsUiState> = combine(
         themeRepository.theme,
+        backupOperations?.backupLocation ?: flowOf(DEFAULT_BACKUP_LABEL),
+        busy,
+        importPreview,
         message,
-    ) { theme, currentMessage ->
+    ) { theme, backupLocation, currentBusy, preview, currentMessage ->
         SettingsUiState(
             selectedTheme = theme,
+            backupLocation = backupLocation,
+            busy = currentBusy,
+            importPreview = preview,
             message = currentMessage,
         )
     }.stateIn(
@@ -48,4 +66,50 @@ class SettingsViewModel(
             }
         }
     }
+
+    fun exportData() = runBackupOperation {
+        val result = requireBackupOperations().export()
+        message.value = "已导出：${result.fileName}"
+    }
+
+    fun loadImport(uri: String) = runBackupOperation {
+        importPreview.value = requireBackupOperations().preview(uri)
+        message.value = null
+    }
+
+    fun dismissImport() {
+        importPreview.value = null
+    }
+
+    fun confirmImport(mode: ImportMode) = runBackupOperation {
+        val preview = importPreview.value ?: return@runBackupOperation
+        val result = requireBackupOperations().import(preview, mode)
+        importPreview.value = null
+        message.value = "导入完成：${result.summary.habits} 个习惯，${result.summary.checkIns} 条打卡"
+    }
+
+    fun changeBackupFolder(uri: String) = runBackupOperation {
+        when (val result = requireBackupOperations().changeFolder(uri)) {
+            is FolderChangeResult.Success -> message.value = "已迁移 ${result.migratedFiles} 个备份文件"
+            is FolderChangeResult.Failed -> message.value = result.message
+        }
+    }
+
+    private fun runBackupOperation(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            busy.value = true
+            try {
+                block()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                message.value = error.message ?: "操作失败，请重试"
+            } finally {
+                busy.value = false
+            }
+        }
+    }
+
+    private fun requireBackupOperations(): BackupOperations =
+        checkNotNull(backupOperations) { "备份服务尚未初始化" }
 }
