@@ -22,6 +22,14 @@ import com.habit.app.ui.habits.HabitListScreen
 import com.habit.app.ui.habits.HabitListViewModel
 import com.habit.app.ui.settings.SettingsScreen
 import com.habit.app.ui.settings.SettingsViewModel
+import com.habit.app.ui.diet.DietDiaryScreen
+import com.habit.app.ui.diet.DietDiaryViewModel
+import com.habit.app.ui.diet.DietEditorScreen
+import com.habit.app.ui.diet.DietEditorViewModel
+import com.habit.app.ui.diet.DietSettingsScreen
+import com.habit.app.ui.diet.DietSettingsViewModel
+import com.habit.app.ui.diet.DietStatsScreen
+import com.habit.app.ui.diet.DietStatsViewModel
 import com.habit.app.ui.welcome.WelcomeScreen
 import com.habit.app.ui.workbench.WorkbenchScreen
 import com.habit.app.ui.workbench.WorkbenchViewModel
@@ -47,6 +55,8 @@ fun HabitNavHost(
                 onCreateHabit = { navController.navigate(HabitDestination.HabitEditor.route()) },
                 onOpenCalendar = { navController.navigate(HabitDestination.Calendar.route) },
                 onOpenHabit = { navController.navigate(HabitDestination.HabitDetail.route(it)) },
+                onOpenDiet = { navController.navigate(HabitDestination.DietDiary.route) },
+                onAddDiet = { navController.navigate(HabitDestination.DietEditor.route()) },
             )
         }
         composable(HabitDestination.Calendar.route) {
@@ -147,6 +157,32 @@ fun HabitNavHost(
                 onBack = onOpenDrawer,
             )
         }
+        composable(HabitDestination.DietDiary.route) {
+            DietDiaryScreen(
+                viewModel = viewModel(factory = DietDiaryFactory(container)),
+                onOpenDrawer = onOpenDrawer,
+                onAdd = { navController.navigate(HabitDestination.DietEditor.route()) },
+                onOpenRecord = { navController.navigate(HabitDestination.DietEditor.route(it)) },
+            )
+        }
+        composable(
+            route = HabitDestination.DietEditor.route,
+            arguments = listOf(navArgument("recordId") { type = NavType.LongType; defaultValue = -1L }),
+        ) { entry ->
+            val recordId = entry.arguments?.getLong("recordId")?.takeIf { it >= 0 }
+            DietEditorScreen(
+                viewModel = viewModel(factory = DietEditorFactory(container, recordId)),
+                isEditing = recordId != null,
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
+            )
+        }
+        composable(HabitDestination.DietStats.route) {
+            DietStatsScreen(viewModel(factory = DietStatsFactory(container)), onOpenDrawer)
+        }
+        composable(HabitDestination.DietSettings.route) {
+            DietSettingsScreen(viewModel(factory = DietSettingsFactory(container)), onOpenDrawer)
+        }
     }
 }
 
@@ -236,4 +272,31 @@ private class SettingsFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         SettingsViewModel(container.themeRepository, container.backupOperations) as T
+}
+
+private class DietDiaryFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietDiaryViewModel(container.dietRepository, container.dateProvider) as T
+}
+
+private class DietEditorFactory(
+    private val container: AppContainer,
+    private val recordId: Long?,
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietEditorViewModel(recordId, container.dietRepository, container.dateProvider) as T
+}
+
+private class DietStatsFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietStatsViewModel(container.dietRepository, container.dateProvider) as T
+}
+
+private class DietSettingsFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietSettingsViewModel(container.dietPreferencesRepository) as T
 }

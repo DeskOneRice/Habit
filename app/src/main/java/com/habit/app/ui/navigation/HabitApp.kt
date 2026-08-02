@@ -22,6 +22,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.habit.app.di.AppContainer
+import com.habit.app.data.preferences.DrawerModuleGroup
 import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
 import com.habit.app.ui.welcome.FirstRunDestination
@@ -66,19 +67,29 @@ private fun AppNavigation(startDestination: HabitDestination, container: AppCont
         val workbenchState by workbenchViewModel.state.collectAsStateWithLifecycle()
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = backStackEntry?.destination?.route
-        val topLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()
+        val dietPreferences by container.dietPreferencesRepository.preferences.collectAsStateWithLifecycle(
+            initialValue = com.habit.app.data.preferences.DietPreferences(),
+        )
 
         ModalNavigationDrawer(
             modifier = Modifier.testTag(
                 "app_theme_primary_${MaterialTheme.colorScheme.primary.toArgb()}",
             ),
             drawerState = drawerState,
-            gesturesEnabled = currentRoute in topLevelRoutes,
+            gesturesEnabled = currentRoute in drawerTopLevelRoutes,
             drawerContent = {
                 ModalDrawerSheet {
                     HabitDrawerContent(
                         selectedRoute = currentRoute,
                         progress = workbenchState.progress,
+                        habitExpanded = dietPreferences.habitGroupExpanded,
+                        dietExpanded = dietPreferences.dietGroupExpanded,
+                        onToggleHabit = {
+                            scope.launch { container.dietPreferencesRepository.setGroupExpanded(DrawerModuleGroup.HABIT, !dietPreferences.habitGroupExpanded) }
+                        },
+                        onToggleDiet = {
+                            scope.launch { container.dietPreferencesRepository.setGroupExpanded(DrawerModuleGroup.DIET, !dietPreferences.dietGroupExpanded) }
+                        },
                         onDestination = { destination ->
                             scope.launch { drawerState.close() }
                             navController.navigate(destination.route) {
@@ -112,6 +123,7 @@ private class WorkbenchViewModelFactory(
             categoryRepository = container.categoryRepository,
             checkInRepository = container.checkInRepository,
             dateProvider = container.dateProvider,
+            dietRepository = container.dietRepository,
         ) as T
 }
 

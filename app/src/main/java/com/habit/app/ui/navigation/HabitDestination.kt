@@ -14,6 +14,13 @@ sealed interface HabitDestination {
     }
     data object Settings : HabitDestination { override val route = "settings" }
     data object Categories : HabitDestination { override val route = "categories" }
+    data object DietDiary : HabitDestination { override val route = "diet" }
+    data object DietEditor : HabitDestination {
+        override val route = "diet_editor?recordId={recordId}"
+        fun route(id: Long? = null) = if (id == null) "diet_editor" else "diet_editor?recordId=$id"
+    }
+    data object DietStats : HabitDestination { override val route = "diet_stats" }
+    data object DietSettings : HabitDestination { override val route = "diet_settings" }
 }
 
 data class DrawerDestination(
@@ -22,10 +29,21 @@ data class DrawerDestination(
     val symbol: String,
 )
 
-val topLevelDestinations = listOf(
-    DrawerDestination(HabitDestination.Workbench, "今日工作台", "⌂"),
+val habitDestinations = listOf(
     DrawerDestination(HabitDestination.Calendar, "习惯日历", "▦"),
     DrawerDestination(HabitDestination.Habits, "我的习惯", "✓"),
     DrawerDestination(HabitDestination.Categories, "分类管理", "◫"),
-    DrawerDestination(HabitDestination.Settings, "主题与设置", "⚙"),
 )
+
+val dietDestinations = listOf(
+    DrawerDestination(HabitDestination.DietDiary, "饮食日记", "☕"),
+    DrawerDestination(HabitDestination.DietStats, "饮食统计", "⌁"),
+    DrawerDestination(HabitDestination.DietSettings, "饮食设置", "⚙"),
+)
+
+val drawerTopLevelRoutes = buildSet {
+    add(HabitDestination.Workbench.route)
+    add(HabitDestination.Settings.route)
+    addAll(habitDestinations.map { it.destination.route })
+    addAll(dietDestinations.map { it.destination.route })
+}

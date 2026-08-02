@@ -50,6 +50,8 @@ fun WorkbenchScreen(
     onCreateHabit: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenHabit: (Long) -> Unit,
+    onOpenDiet: () -> Unit,
+    onAddDiet: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
@@ -84,6 +86,7 @@ fun WorkbenchScreen(
                     }
                 }
                 item { RecentWeekCard(state.recentDays, onOpenCalendar) }
+                item { DietTodayCard(state, onOpenDiet, onAddDiet) }
                 item {
                     HabitCard(Modifier.fillMaxWidth()) {
                         Text("本月数据", style = MaterialTheme.typography.titleMedium)
@@ -97,6 +100,24 @@ fun WorkbenchScreen(
                 }
                 state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             }
+        }
+    }
+}
+
+@Composable
+private fun DietTodayCard(state: WorkbenchUiState, onOpenDiet: () -> Unit, onAddDiet: () -> Unit) {
+    HabitCard(Modifier.fillMaxWidth().clickable(onClick = onOpenDiet)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("☕", style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("今日饮食", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (state.dietRecordCount == 0) "还没有记录" else "${state.dietRecordCount} 条 · ${state.dietCalories?.let { "$it kcal" } ?: "未记热量"}${if (state.beverageCups > 0) " · ${state.beverageCups} 杯饮品" else ""}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onAddDiet) { Text("记录") }
         }
     }
 }
