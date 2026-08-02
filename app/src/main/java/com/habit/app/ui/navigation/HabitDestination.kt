@@ -41,9 +41,8 @@ val dietDestinations = listOf(
     DrawerDestination(HabitDestination.DietSettings, "饮食设置", "⚙"),
 )
 
-val drawerTopLevelRoutes = buildSet {
-    add(HabitDestination.Workbench.route)
-    add(HabitDestination.Settings.route)
-    addAll(habitDestinations.map { it.destination.route })
-    addAll(dietDestinations.map { it.destination.route })
-}
+val topLevelDestinations = listOf(
+    DrawerDestination(HabitDestination.Workbench, "今日工作台", "⌂"),
+) + habitDestinations + dietDestinations + DrawerDestination(HabitDestination.Settings, "主题与设置", "⚙")
+
+val drawerTopLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()

@@ -21,9 +21,9 @@ class NavigationPolicyTest {
     }
 
     @Test
-    fun drawerContainsExactlyFiveTopLevelRoutes() {
+    fun drawerContainsWorkbenchAndModuleRoutes() {
         assertEquals(
-            listOf("workbench", "calendar", "habits", "categories", "settings"),
+            listOf("workbench", "calendar", "habits", "categories", "diet", "diet_stats", "diet_settings", "settings"),
             topLevelDestinations.map { it.destination.route },
         )
     }
