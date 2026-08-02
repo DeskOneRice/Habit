@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ProjectSmokeTest {
     @Test
-    fun applicationIdIsStable() {
-        assertEquals("com.habit.app", BuildConfig.APPLICATION_ID)
+    fun applicationNamespaceIsStable() {
+        assertEquals("com.habit.app", HabitApplication::class.java.packageName)
     }
 }

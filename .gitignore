@@ -5,6 +5,7 @@ local.properties
 .gradle/
 .gradle-user/
 .tmp/
+.android-upgrade/
 .kotlin/
 **/build/
 outputs/

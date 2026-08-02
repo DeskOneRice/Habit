@@ -95,7 +95,7 @@ fun HabitNavHost(
                         ) {
                             navController.completeOnboarding()
                         } else {
-                            navController.returnToHabits()
+                            navController.popBackStack()
                         }
                     } else {
                         navController.popBackStack()

@@ -29,17 +29,15 @@ fun HabitListScreen(
     var archivedExpanded by remember { mutableStateOf(false) }
     Scaffold(
         modifier = Modifier.testTag("habit_list_screen"),
-        bottomBar = {
-            Button(
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
                 onClick = onCreate,
                 modifier = Modifier
-                    .fillMaxWidth()
                     .heightIn(min = 48.dp)
-                    .padding(horizontal = 20.dp)
                     .testTag("create_habit"),
-            ) {
-                Text("新建习惯")
-            }
+                text = { Text("新建习惯") },
+                icon = { Text("＋") },
+            )
         },
     ) { contentPadding ->
         LazyColumn(
