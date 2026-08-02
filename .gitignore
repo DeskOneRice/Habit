@@ -3,6 +3,8 @@
 work/
 local.properties
 .gradle/
+.gradle-user/
+.tmp/
 .kotlin/
 **/build/
 outputs/

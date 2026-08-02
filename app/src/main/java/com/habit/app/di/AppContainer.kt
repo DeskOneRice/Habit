@@ -8,6 +8,7 @@ import androidx.room.Room
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.PresetCategoryCallback
 import com.habit.app.data.preferences.ThemePreferencesRepository
+import com.habit.app.data.preferences.EmojiPreferencesRepository
 import com.habit.app.data.repository.RoomCalendarRepository
 import com.habit.app.data.repository.RoomCategoryRepository
 import com.habit.app.data.repository.RoomCheckInRepository
@@ -47,4 +48,5 @@ class AppContainer(
         database.checkInDao(),
     )
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore)
+    val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore)
 }
