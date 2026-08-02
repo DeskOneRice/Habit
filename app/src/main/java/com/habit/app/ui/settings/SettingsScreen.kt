@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,6 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onCategories: () -> Unit,
+    onOpenDrawer: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -35,7 +39,10 @@ fun SettingsScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("设置", style = MaterialTheme.typography.headlineSmall)
+        Row {
+            TextButton(onOpenDrawer, Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("open_drawer")) { Text("☰") }
+            Text("主题与设置", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 10.dp))
+        }
         Text("外观", style = MaterialTheme.typography.titleLarge)
         ThemePicker(
             selectedTheme = state.selectedTheme,
@@ -77,6 +84,6 @@ fun SettingsScreen(
         Text("本地数据", style = MaterialTheme.typography.titleLarge)
         Text("数据仅保存在本机，卸载应用会同时删除记录")
         Text("版本", style = MaterialTheme.typography.titleLarge)
-        Text("0.1.0 · 内测版")
+        Text("0.2.0 · 内测版")
     }
 }

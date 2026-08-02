@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ fun HabitListScreen(
     onCreate: () -> Unit,
     onOpenDetail: (Long) -> Unit,
     onCategories: () -> Unit,
+    onOpenDrawer: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var archivedExpanded by remember { mutableStateOf(false) }
@@ -54,7 +56,10 @@ fun HabitListScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("习惯", style = MaterialTheme.typography.headlineSmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onOpenDrawer, Modifier.testTag("open_drawer")) { Text("☰") }
+                        Text("我的习惯", style = MaterialTheme.typography.headlineSmall)
+                    }
                     TextButton(onCategories) { Text("管理分类") }
                 }
             }

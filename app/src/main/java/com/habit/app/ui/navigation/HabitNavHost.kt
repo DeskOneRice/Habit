@@ -23,12 +23,16 @@ import com.habit.app.ui.habits.HabitListViewModel
 import com.habit.app.ui.settings.SettingsScreen
 import com.habit.app.ui.settings.SettingsViewModel
 import com.habit.app.ui.welcome.WelcomeScreen
+import com.habit.app.ui.workbench.WorkbenchScreen
+import com.habit.app.ui.workbench.WorkbenchViewModel
 
 @Composable
 fun HabitNavHost(
     navController: NavHostController,
     startDestination: HabitDestination,
     container: AppContainer,
+    workbenchViewModel: WorkbenchViewModel,
+    onOpenDrawer: () -> Unit,
 ) {
     NavHost(navController, startDestination.route) {
         composable(HabitDestination.Welcome.route) {
@@ -36,8 +40,17 @@ fun HabitNavHost(
                 navController.navigate(HabitDestination.HabitEditor.route())
             }
         }
+        composable(HabitDestination.Workbench.route) {
+            WorkbenchScreen(
+                viewModel = workbenchViewModel,
+                onOpenDrawer = onOpenDrawer,
+                onCreateHabit = { navController.navigate(HabitDestination.HabitEditor.route()) },
+                onOpenCalendar = { navController.navigate(HabitDestination.Calendar.route) },
+                onOpenHabit = { navController.navigate(HabitDestination.HabitDetail.route(it)) },
+            )
+        }
         composable(HabitDestination.Calendar.route) {
-            CalendarScreen(viewModel(factory = CalendarFactory(container)))
+            CalendarScreen(viewModel(factory = CalendarFactory(container)), onOpenDrawer)
         }
         composable(HabitDestination.Habits.route) {
             HabitListScreen(
@@ -51,6 +64,7 @@ fun HabitNavHost(
                 onCategories = {
                     navController.navigate(HabitDestination.Categories.route)
                 },
+                onOpenDrawer = onOpenDrawer,
             )
         }
         composable(
@@ -123,19 +137,20 @@ fun HabitNavHost(
                 onCategories = {
                     navController.navigate(HabitDestination.Categories.route)
                 },
+                onOpenDrawer = onOpenDrawer,
             )
         }
         composable(HabitDestination.Categories.route) {
             CategoryScreen(
                 viewModel = viewModel(factory = CategoryFactory(container)),
-                onBack = { navController.popBackStack() },
+                onBack = onOpenDrawer,
             )
         }
     }
 }
 
 private fun NavHostController.completeOnboarding() {
-    navigate(HabitDestination.Habits.route) {
+    navigate(HabitDestination.Workbench.route) {
         popUpTo(HabitDestination.Welcome.route) {
             inclusive = true
         }

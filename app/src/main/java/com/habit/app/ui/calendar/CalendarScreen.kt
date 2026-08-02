@@ -26,12 +26,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.ui.components.DeviceDateRefreshEffect
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.NavigationMode
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CalendarScreen(viewModel: CalendarViewModel) {
+fun CalendarScreen(viewModel: CalendarViewModel, onOpenDrawer: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var sheetVisible by remember { mutableStateOf(false) }
 
@@ -44,6 +46,7 @@ fun CalendarScreen(viewModel: CalendarViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
+        HabitTopAppBar("习惯日历", NavigationMode.MENU, onOpenDrawer)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

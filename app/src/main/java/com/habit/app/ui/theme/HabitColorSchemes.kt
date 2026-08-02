@@ -4,7 +4,8 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-private val Background = Color(0xFFFCFEFE)
+private val Background = Color(0xFFF3F7F9)
+private val Surface = Color(0xFFFCFDFD)
 private val PrimaryText = Color(0xFF30434D)
 private val PrimaryForeground = Color(0xFF263238)
 
@@ -15,7 +16,8 @@ val SkyBlueScheme = lightColorScheme(
     onPrimaryContainer = PrimaryText,
     background = Background,
     onBackground = PrimaryText,
-    surface = Background,
+    surface = Surface,
+    surfaceVariant = Color(0xFFE8F0F3),
     onSurface = PrimaryText,
 )
 
@@ -26,7 +28,7 @@ val SoftPinkScheme = lightColorScheme(
     onPrimaryContainer = PrimaryText,
     background = Background,
     onBackground = PrimaryText,
-    surface = Background,
+    surface = Surface,
     onSurface = PrimaryText,
 )
 
@@ -37,7 +39,7 @@ val SageGreenScheme = lightColorScheme(
     onPrimaryContainer = PrimaryText,
     background = Background,
     onBackground = PrimaryText,
-    surface = Background,
+    surface = Surface,
     onSurface = PrimaryText,
 )
 
@@ -48,7 +50,7 @@ val MistPurpleScheme = lightColorScheme(
     onPrimaryContainer = PrimaryText,
     background = Background,
     onBackground = PrimaryText,
-    surface = Background,
+    surface = Surface,
     onSurface = PrimaryText,
 )
 
@@ -59,7 +61,7 @@ val NeutralGrayScheme = lightColorScheme(
     onPrimaryContainer = PrimaryText,
     background = Background,
     onBackground = PrimaryText,
-    surface = Background,
+    surface = Surface,
     onSurface = PrimaryText,
 )
 

@@ -1,15 +1,15 @@
 package com.habit.app.ui.navigation
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -26,17 +26,8 @@ import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
 import com.habit.app.ui.welcome.FirstRunDestination
 import com.habit.app.ui.welcome.WelcomeViewModel
-
-private data class BottomDestination(
-    val destination: HabitDestination,
-    val label: String,
-)
-
-private val bottomDestinations = listOf(
-    BottomDestination(HabitDestination.Calendar, "日历"),
-    BottomDestination(HabitDestination.Habits, "习惯"),
-    BottomDestination(HabitDestination.Settings, "设置"),
-)
+import com.habit.app.ui.workbench.WorkbenchViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun HabitApp(container: AppContainer) {
@@ -58,7 +49,7 @@ fun HabitApp(container: AppContainer) {
         when (initialDestination ?: FirstRunDestination.Loading) {
             FirstRunDestination.Loading -> Unit
             FirstRunDestination.Welcome -> AppNavigation(HabitDestination.Welcome, container)
-            FirstRunDestination.Calendar -> AppNavigation(HabitDestination.Calendar, container)
+            FirstRunDestination.Workbench -> AppNavigation(HabitDestination.Workbench, container)
         }
     }
 }
@@ -67,38 +58,61 @@ fun HabitApp(container: AppContainer) {
 private fun AppNavigation(startDestination: HabitDestination, container: AppContainer) {
     key(startDestination) {
         val navController = rememberNavController()
+        val drawerState = rememberDrawerState(DrawerValue.Closed)
+        val scope = rememberCoroutineScope()
+        val workbenchViewModel: WorkbenchViewModel = viewModel(
+            factory = WorkbenchViewModelFactory(container),
+        )
+        val workbenchState by workbenchViewModel.state.collectAsStateWithLifecycle()
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = backStackEntry?.destination?.route
-        val showBottomNavigation = bottomDestinations.any { it.destination.route == currentRoute }
+        val topLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()
 
-        Scaffold(
+        ModalNavigationDrawer(
             modifier = Modifier.testTag(
                 "app_theme_primary_${MaterialTheme.colorScheme.primary.toArgb()}",
             ),
-            bottomBar = {
-                if (showBottomNavigation) {
-                    NavigationBar(Modifier.testTag("bottom_navigation")) {
-                        bottomDestinations.forEach { item ->
-                            NavigationBarItem(
-                                selected = currentRoute == item.destination.route,
-                                onClick = {
-                                    navController.navigate(item.destination.route) {
-                                        launchSingleTop = true
-                                    }
-                                },
-                                icon = {},
-                                label = { Text(item.label) },
-                            )
-                        }
-                    }
+            drawerState = drawerState,
+            gesturesEnabled = currentRoute in topLevelRoutes,
+            drawerContent = {
+                ModalDrawerSheet {
+                    HabitDrawerContent(
+                        selectedRoute = currentRoute,
+                        progress = workbenchState.progress,
+                        onDestination = { destination ->
+                            scope.launch { drawerState.close() }
+                            navController.navigate(destination.route) {
+                                popUpTo(HabitDestination.Workbench.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                    )
                 }
             },
-        ) { paddingValues ->
-            androidx.compose.foundation.layout.Box(Modifier.padding(paddingValues)) {
-                HabitNavHost(navController = navController, startDestination = startDestination, container = container)
-            }
+        ) {
+            HabitNavHost(
+                navController = navController,
+                startDestination = startDestination,
+                container = container,
+                workbenchViewModel = workbenchViewModel,
+                onOpenDrawer = { scope.launch { drawerState.open() } },
+            )
         }
     }
+}
+
+private class WorkbenchViewModelFactory(
+    private val container: AppContainer,
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        WorkbenchViewModel(
+            calendarRepository = container.calendarRepository,
+            categoryRepository = container.categoryRepository,
+            checkInRepository = container.checkInRepository,
+            dateProvider = container.dateProvider,
+        ) as T
 }
 
 private class WelcomeViewModelFactory(

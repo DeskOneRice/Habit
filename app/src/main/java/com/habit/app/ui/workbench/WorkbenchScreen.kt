@@ -1,0 +1,193 @@
+package com.habit.app.ui.workbench
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.habit.app.ui.components.DeviceDateRefreshEffect
+import com.habit.app.ui.components.HabitCard
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.components.habitEmoji
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+
+private val workbenchDateFormatter = DateTimeFormatter.ofPattern("M月d日 EEEE")
+
+@Composable
+fun WorkbenchScreen(
+    viewModel: WorkbenchViewModel,
+    onOpenDrawer: () -> Unit,
+    onCreateHabit: () -> Unit,
+    onOpenCalendar: () -> Unit,
+    onOpenHabit: (Long) -> Unit,
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
+
+    Column(
+        Modifier.fillMaxSize()
+            .testTag("workbench_screen"),
+    ) {
+        HabitTopAppBar("今日 · ${state.today.format(workbenchDateFormatter)}", NavigationMode.MENU, onOpenDrawer) {
+            TextButton(onCreateHabit, Modifier.testTag("workbench_create")) { Text("＋") }
+        }
+        if (state.isLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item { ProgressCard(state) }
+                if (state.habits.isEmpty()) {
+                    item { EmptyWorkbench(onCreateHabit) }
+                } else {
+                    item { Text("今天想完成什么", style = MaterialTheme.typography.titleMedium) }
+                    items(state.habits, key = { it.habit.id }) { item ->
+                        HabitCheckRow(
+                            item = item,
+                            toggling = item.habit.id in state.togglingHabitIds,
+                            onOpen = { onOpenHabit(item.habit.id) },
+                            onToggle = { viewModel.toggle(item.habit.id) },
+                        )
+                    }
+                }
+                item { RecentWeekCard(state.recentDays, onOpenCalendar) }
+                item {
+                    HabitCard(Modifier.fillMaxWidth()) {
+                        Text("本月数据", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(14.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                            Stat("${state.monthStats.activeDays}", "活跃天数")
+                            Stat("${(state.monthStats.completionRate * 100).roundToInt()}%", "完成率")
+                            Stat("${state.longestCurrentStreak}", "连续天数")
+                        }
+                    }
+                }
+                state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressCard(state: WorkbenchUiState) {
+    HabitCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(progress = { state.progress }, modifier = Modifier.size(74.dp), strokeWidth = 7.dp)
+                Text("${(state.progress * 100).roundToInt()}%", fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.width(18.dp))
+            Column {
+                Text("今天完成 ${state.completedCount}/${state.totalCount}", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    if (state.longestCurrentStreak > 0) "最长正在坚持 ${state.longestCurrentStreak} 天" else "从今天开始积累",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HabitCheckRow(
+    item: WorkbenchHabitItem,
+    toggling: Boolean,
+    onOpen: () -> Unit,
+    onToggle: () -> Unit,
+) {
+    HabitCard(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text(habitEmoji(item.habit.iconKey)) }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.habit.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    listOfNotNull(item.categoryName.takeIf(String::isNotBlank), "连续 ${item.currentStreak} 天").joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            FilledTonalIconButton(
+                onClick = onToggle,
+                enabled = !toggling,
+                modifier = Modifier
+                    .testTag("workbench_toggle_${item.habit.id}")
+                    .semantics { contentDescription = if (item.checked) "取消${item.habit.name}打卡" else "完成${item.habit.name}打卡" },
+            ) { Text(if (item.checked) "✓" else "○") }
+        }
+    }
+}
+
+@Composable
+private fun RecentWeekCard(days: List<RecentDay>, onOpenCalendar: () -> Unit) {
+    HabitCard(Modifier.fillMaxWidth().testTag("recent_week_strip")) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("最近 7 天", style = MaterialTheme.typography.titleMedium)
+            TextButton(onOpenCalendar) { Text("打开月历") }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            days.forEach { day ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(day.date.dayOfMonth.toString(), style = MaterialTheme.typography.labelMedium)
+                    val distinct = day.iconKeys.distinct()
+                    Text(distinct.take(3).joinToString("") { habitEmoji(it) }, maxLines = 1)
+                    if (distinct.size > 3) Text("+${distinct.size - 3}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyWorkbench(onCreateHabit: () -> Unit) {
+    HabitCard(Modifier.fillMaxWidth()) {
+        Text("🌤️", style = MaterialTheme.typography.headlineMedium)
+        Text("今天还没有安排习惯", style = MaterialTheme.typography.titleMedium)
+        Text("创建一个很小的行动，让仪式感从今天开始。")
+        Spacer(Modifier.height(12.dp))
+        Button(onCreateHabit) { Text("新建习惯") }
+    }
+}
+
+@Composable
+private fun Stat(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleLarge)
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
