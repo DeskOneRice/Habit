@@ -8,6 +8,7 @@ lifecycle = "2.10.0"
 navigation = "2.9.8"
 room = "2.8.4"
 datastore = "1.2.1"
+documentfile = "1.0.0"
 coroutines = "1.10.2"
 serializationJson = "1.8.1"
 junit = "4.13.2"
@@ -32,6 +33,7 @@ room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm", version.ref = "serializationJson" }
 junit = { module = "junit:junit", version.ref = "junit" }
