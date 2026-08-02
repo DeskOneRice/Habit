@@ -1,11 +1,17 @@
 package com.habit.app.ui.components
 
+import androidx.compose.ui.Alignment
 import java.time.LocalDate
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HabitDatePickerTest {
+    @Test
+    fun weekdayAndDateCellsShareCenteredContentAlignment() {
+        assertEquals(Alignment.Center, HABIT_CALENDAR_CELL_ALIGNMENT)
+    }
+
     @Test
     fun august2026StartsWithFiveEmptyMondayFirstCells() {
         val cells = buildMonthCells(YearMonth.of(2026, 8))

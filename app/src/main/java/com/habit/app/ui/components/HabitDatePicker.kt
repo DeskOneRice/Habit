@@ -1,10 +1,13 @@
 package com.habit.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -28,6 +32,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 val HABIT_WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
+internal val HABIT_CALENDAR_CELL_ALIGNMENT = Alignment.Center
 
 fun buildMonthCells(month: YearMonth): List<LocalDate?> {
     val first = month.atDay(1)
@@ -69,31 +74,34 @@ fun HabitDatePickerDialog(
                     TextButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }) { Text("›") }
                 }
                 Row(Modifier.fillMaxWidth()) {
-                    HABIT_WEEKDAY_LABELS.forEach { label ->
-                        Text(
-                            label,
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
+                    HABIT_WEEKDAY_LABELS.forEachIndexed { index, label ->
+                        CalendarCell(tag = "habit_weekday_${index + 1}") {
+                            Text(
+                                label,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
                     }
                 }
                 cells.chunked(7).forEach { week ->
                     Row(Modifier.fillMaxWidth()) {
                         week.forEach { date ->
                             if (date == null) {
-                                Spacer(Modifier.weight(1f).aspectRatio(1f))
+                                CalendarCell {}
                             } else {
                                 val selected = date == draftDate
-                                TextButton(
-                                    onClick = { draftDate = date },
-                                    modifier = Modifier.weight(1f).aspectRatio(1f),
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                    ),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                                ) { Text(date.dayOfMonth.toString()) }
+                                CalendarCell(tag = "habit_date_${date.dayOfMonth}") {
+                                    TextButton(
+                                        onClick = { draftDate = date },
+                                        modifier = Modifier.fillMaxSize(),
+                                        colors = ButtonDefaults.textButtonColors(
+                                            containerColor = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                        ),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                                    ) { Text(date.dayOfMonth.toString()) }
+                                }
                             }
                         }
                     }
@@ -105,4 +113,20 @@ fun HabitDatePickerDialog(
             }
         }
     }
+}
+
+@Composable
+private fun RowScope.CalendarCell(
+    tag: String? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val modifier = Modifier
+        .weight(1f)
+        .aspectRatio(1f)
+        .let { base -> if (tag == null) base else base.testTag(tag) }
+    Box(
+        modifier = modifier,
+        contentAlignment = HABIT_CALENDAR_CELL_ALIGNMENT,
+        content = content,
+    )
 }
