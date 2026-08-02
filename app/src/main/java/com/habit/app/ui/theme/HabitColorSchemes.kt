@@ -4,65 +4,95 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-private val Background = Color(0xFFF3F7F9)
-private val Surface = Color(0xFFFCFDFD)
-private val PrimaryText = Color(0xFF30434D)
+private val NearWhiteBackground = Color(0xFFFAFCFD)
+private val WhiteSurface = Color(0xFFFFFFFF)
+private val SoftNeutral = Color(0xFFF3F7F9)
+private val SoftNeutralHigh = Color(0xFFEAF0F2)
+private val PrimaryText = Color(0xFF263840)
+private val SecondaryText = Color(0xFF708087)
 private val PrimaryForeground = Color(0xFF263238)
+private val SecondaryAccent = Color(0xFF6F919E)
+private val TertiaryAccent = Color(0xFF7F979E)
+private val Outline = Color(0xFFBBC8CD)
+private val OutlineVariant = Color(0xFFDCE5E8)
 
-val SkyBlueScheme = lightColorScheme(
+private fun nearWhiteScheme(
+    primary: Color,
+    primaryContainer: Color,
+): ColorScheme = lightColorScheme(
+    primary = primary,
+    onPrimary = PrimaryForeground,
+    primaryContainer = primaryContainer,
+    onPrimaryContainer = PrimaryText,
+    inversePrimary = primaryContainer,
+    secondary = SecondaryAccent,
+    onSecondary = Color.White,
+    secondaryContainer = SoftNeutralHigh,
+    onSecondaryContainer = PrimaryText,
+    tertiary = TertiaryAccent,
+    onTertiary = Color.White,
+    tertiaryContainer = SoftNeutral,
+    onTertiaryContainer = PrimaryText,
+    background = NearWhiteBackground,
+    onBackground = PrimaryText,
+    surface = WhiteSurface,
+    onSurface = PrimaryText,
+    surfaceVariant = SoftNeutral,
+    onSurfaceVariant = SecondaryText,
+    surfaceTint = primary,
+    inverseSurface = PrimaryText,
+    inverseOnSurface = NearWhiteBackground,
+    error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    outline = Outline,
+    outlineVariant = OutlineVariant,
+    scrim = Color(0x52000000),
+    surfaceBright = WhiteSurface,
+    surfaceDim = Color(0xFFE5ECEF),
+    surfaceContainer = Color(0xFFF5F8F9),
+    surfaceContainerHigh = Color(0xFFF0F5F6),
+    surfaceContainerHighest = Color(0xFFEBF1F3),
+    surfaceContainerLow = Color(0xFFF8FAFB),
+    surfaceContainerLowest = WhiteSurface,
+    primaryFixed = primaryContainer,
+    primaryFixedDim = primary,
+    onPrimaryFixed = PrimaryText,
+    onPrimaryFixedVariant = PrimaryText,
+    secondaryFixed = SoftNeutralHigh,
+    secondaryFixedDim = SecondaryAccent,
+    onSecondaryFixed = PrimaryText,
+    onSecondaryFixedVariant = PrimaryText,
+    tertiaryFixed = SoftNeutral,
+    tertiaryFixedDim = TertiaryAccent,
+    onTertiaryFixed = PrimaryText,
+    onTertiaryFixedVariant = PrimaryText,
+)
+
+val SkyBlueScheme = nearWhiteScheme(
     primary = Color(0xFF8DB9CC),
-    onPrimary = PrimaryForeground,
-    primaryContainer = Color(0xFFDDEEF5),
-    onPrimaryContainer = PrimaryText,
-    background = Background,
-    onBackground = PrimaryText,
-    surface = Surface,
-    surfaceVariant = Color(0xFFE8F0F3),
-    onSurface = PrimaryText,
+    primaryContainer = Color(0xFFEAF4F8),
 )
 
-val SoftPinkScheme = lightColorScheme(
+val SoftPinkScheme = nearWhiteScheme(
     primary = Color(0xFFDF988F),
-    onPrimary = PrimaryForeground,
-    primaryContainer = Color(0xFFF7E5E2),
-    onPrimaryContainer = PrimaryText,
-    background = Background,
-    onBackground = PrimaryText,
-    surface = Surface,
-    onSurface = PrimaryText,
+    primaryContainer = Color(0xFFF9ECEA),
 )
 
-val SageGreenScheme = lightColorScheme(
+val SageGreenScheme = nearWhiteScheme(
     primary = Color(0xFFA8C39D),
-    onPrimary = PrimaryForeground,
-    primaryContainer = Color(0xFFE6F0E2),
-    onPrimaryContainer = PrimaryText,
-    background = Background,
-    onBackground = PrimaryText,
-    surface = Surface,
-    onSurface = PrimaryText,
+    primaryContainer = Color(0xFFEDF5EA),
 )
 
-val MistPurpleScheme = lightColorScheme(
+val MistPurpleScheme = nearWhiteScheme(
     primary = Color(0xFFAAA0C1),
-    onPrimary = PrimaryForeground,
-    primaryContainer = Color(0xFFE9E6F0),
-    onPrimaryContainer = PrimaryText,
-    background = Background,
-    onBackground = PrimaryText,
-    surface = Surface,
-    onSurface = PrimaryText,
+    primaryContainer = Color(0xFFF0EDF5),
 )
 
-val NeutralGrayScheme = lightColorScheme(
+val NeutralGrayScheme = nearWhiteScheme(
     primary = Color(0xFF9CA5A7),
-    onPrimary = PrimaryForeground,
-    primaryContainer = Color(0xFFE8EAEB),
-    onPrimaryContainer = PrimaryText,
-    background = Background,
-    onBackground = PrimaryText,
-    surface = Surface,
-    onSurface = PrimaryText,
+    primaryContainer = Color(0xFFF0F2F2),
 )
 
 fun HabitThemeId.colorScheme(): ColorScheme = when (this) {
