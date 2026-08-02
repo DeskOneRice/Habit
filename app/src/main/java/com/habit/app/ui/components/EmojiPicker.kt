@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.habit.app.ui.emoji.EmojiCatalog
 import com.habit.app.ui.emoji.EmojiCategory
 import com.habit.app.ui.emoji.normalizeEmojiKey
+import com.habit.app.ui.emoji.pickerItemKey
 
 private data class PickerEmoji(val key: String, val emoji: String, val label: String)
 
@@ -83,14 +84,9 @@ private fun EmojiPickerSheet(
     var customInput by remember { mutableStateOf("") }
     var customError by remember { mutableStateOf<String?>(null) }
 
-    val visibleOptions = if (category == EmojiCategory.RECENT) {
-        recentKeys.map { key ->
-            val catalog = EmojiCatalog.options.firstOrNull { it.key == key }
-            PickerEmoji(key, habitEmoji(key), catalog?.label ?: "最近使用")
-        }.filter { option -> query.isBlank() || option.label.contains(query.trim(), ignoreCase = true) }
-    } else {
-        EmojiCatalog.search(query, category).map { PickerEmoji(it.key, it.emoji, it.label) }
-    }
+    val visibleOptions = EmojiCatalog
+        .pickerOptions(query, category, recentKeys)
+        .map { PickerEmoji(it.key, it.emoji, it.label) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("emoji_picker_sheet")) {
         Column(
@@ -132,7 +128,7 @@ private fun EmojiPickerSheet(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(visibleOptions, key = PickerEmoji::key) { option ->
+                    items(visibleOptions, key = { option -> pickerItemKey(category, option.key) }) { option ->
                         OutlinedButton(
                             onClick = { onSelected(option.key) },
                             modifier = Modifier

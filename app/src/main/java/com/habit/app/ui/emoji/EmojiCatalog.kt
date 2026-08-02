@@ -85,7 +85,7 @@ object EmojiCatalog {
         option("☀️", "晒太阳", EmojiCategory.HEALTH, "户外", "阳光"),
         option("⚖️", "体重", EmojiCategory.HEALTH, "称重", "管理"),
         option("🫁", "呼吸", EmojiCategory.HEALTH, "肺", "放松"),
-        option("🧴", "防晒", EmojiCategory.HEALTH, "皮肤", "护肤"),
+        option("🧢", "防晒", EmojiCategory.HEALTH, "皮肤", "护肤"),
         option("🛌", "午休", EmojiCategory.HEALTH, "睡眠", "休息"),
 
         option("⭐", "收藏", EmojiCategory.HOBBY, "星星", "兴趣"),
@@ -119,7 +119,28 @@ object EmojiCatalog {
             categoryMatches && queryMatches
         }
     }
+
+    fun pickerOptions(
+        query: String,
+        category: EmojiCategory,
+        recentKeys: List<String>,
+    ): List<EmojiOption> = if (category == EmojiCategory.RECENT) {
+        recentKeys.distinct().map { key ->
+            options.firstOrNull { it.key == key }
+                ?: EmojiOption(
+                    emoji = key.removePrefix("emoji:"),
+                    label = "最近使用",
+                    category = EmojiCategory.RECENT,
+                )
+        }.filter { option ->
+            query.isBlank() || option.label.contains(query.trim(), ignoreCase = true)
+        }
+    } else {
+        search(query, category)
+    }
 }
+
+fun pickerItemKey(category: EmojiCategory, key: String): String = "${category.name}:$key"
 
 private fun option(
     emoji: String,

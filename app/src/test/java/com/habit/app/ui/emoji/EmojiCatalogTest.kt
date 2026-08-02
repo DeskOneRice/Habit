@@ -45,4 +45,32 @@ class EmojiCatalogTest {
         assertEquals(12, updated.size)
         assertEquals(1, updated.count { it == "emoji:5" })
     }
+
+    @Test
+    fun everyPickerCategoryHasUniqueStableKeys() {
+        EmojiCategory.entries.filterNot { it == EmojiCategory.RECENT }.forEach { category ->
+            val keys = EmojiCatalog.search("", category).map(EmojiOption::key)
+            assertEquals("duplicate keys in $category", keys.distinct(), keys)
+        }
+    }
+
+    @Test
+    fun hobbyCategoryCanBuildEveryPickerItemKey() {
+        val keys = EmojiCatalog.search("", EmojiCategory.HOBBY)
+            .map { pickerItemKey(EmojiCategory.HOBBY, it.key) }
+
+        assertEquals(12, keys.size)
+        assertEquals(keys.size, keys.distinct().size)
+    }
+
+    @Test
+    fun recentKeysAreNormalizedAndDeduplicatedBeforeRendering() {
+        val rows = EmojiCatalog.pickerOptions(
+            query = "",
+            category = EmojiCategory.RECENT,
+            recentKeys = listOf("emoji:⭐", "emoji:⭐"),
+        )
+
+        assertEquals(listOf("emoji:⭐"), rows.map(EmojiOption::key))
+    }
 }
