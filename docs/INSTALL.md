@@ -1,10 +1,10 @@
-# Habit 0.2.1 安装与快速开始
+# Habit 0.2.2 安装与快速开始
 
 ## 安装包信息
 
-- APK 文件名：`Habit-0.2.1-debug.apk`
+- APK 文件名：`Habit-0.2.2-debug.apk`
 - Android 包名：`com.habit.app`
-- 构建类型：调试版（debug）
+- 构建类型：内测版（沿用旧版调试证书签名）
 - 最低 Android 版本：Android 6.0（API 23）
 
 ## 通过 USB / ADB 安装
@@ -15,20 +15,20 @@
 
 ```powershell
 & 'D:\MySoftware\Android\AndroidSdk\platform-tools\adb.exe' devices -l
-& 'D:\MySoftware\Android\AndroidSdk\platform-tools\adb.exe' install 'Habit-0.2.1-debug.apk'
+& 'D:\MySoftware\Android\AndroidSdk\platform-tools\adb.exe' install 'Habit-0.2.2-debug.apk'
 ```
 
 如果手机上已经安装同一包名的旧版，可保留本地数据覆盖升级：
 
 ```powershell
-& 'D:\MySoftware\Android\AndroidSdk\platform-tools\adb.exe' install -r 'Habit-0.2.1-debug.apk'
+& 'D:\MySoftware\Android\AndroidSdk\platform-tools\adb.exe' install -r 'Habit-0.2.2-debug.apk'
 ```
 
 ADB 必须显示目标手机状态为 `device`；`offline` 或 `unauthorized` 时请先重新连接并确认手机上的授权提示。
 
 ## 直接在手机上安装
 
-1. 将 `Habit-0.2.1-debug.apk` 复制到手机。
+1. 将 `Habit-0.2.2-debug.apk` 复制到手机。
 2. 在文件管理器中点按 APK。
 3. 如果系统拦截安装，请按提示仅为当前文件管理器或浏览器开启“允许安装未知来源应用”，安装后可再次关闭该权限。
 4. 确认安装并打开 Habit。
@@ -44,4 +44,4 @@ ADB 必须显示目标手机状态为 `device`；`offline` 或 `unauthorized` �
 
 ## 本地数据说明
 
-Habit 0.2.1 不需要账号，习惯、分类、打卡和主题均只保存在本机，不会上传或同步到云端。从旧版升级时必须直接覆盖安装；不要先卸载旧版，也不要清除应用数据。应用内默认将备份写入 `内部存储 / Download / Habit / 数据备份`，也可在设置中选择其他文件夹并自动迁移已有备份。导入时可选择“合并导入”或“完全替换”；合并冲突以 `updatedAt` 较新的数据为准。
+Habit 0.2.2 不需要账号，习惯、分类、打卡和主题均只保存在本机，不会上传或同步到云端。从旧版升级时必须直接覆盖安装；不要先卸载旧版，也不要清除应用数据。应用内默认将备份写入 `内部存储 / Download / Habit / 数据备份`，也可在设置中选择其他文件夹并自动迁移已有备份。导入时可选择“合并导入”或“完全替换”；合并冲突以 `updatedAt` 较新的数据为准。
