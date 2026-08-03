@@ -34,7 +34,7 @@ class NavigationPolicyTest {
     @Test
     fun drawerContainsWorkbenchAndModuleRoutes() {
         assertEquals(
-            listOf("workbench", "calendar", "habits", "categories", "diet", "diet_stats", "diet_settings", "settings"),
+            listOf("workbench", "calendar", "habits", "categories", "diet", "diet_templates", "diet_stats", "diet_settings", "settings"),
             topLevelDestinations.map { it.destination.route },
         )
     }

@@ -16,9 +16,12 @@ sealed interface HabitDestination {
     data object Categories : HabitDestination { override val route = "categories" }
     data object DietDiary : HabitDestination { override val route = "diet" }
     data object DietEditor : HabitDestination {
-        override val route = "diet_editor?recordId={recordId}"
+        override val route = "diet_editor?recordId={recordId}&repeatId={repeatId}&templateId={templateId}"
         fun route(id: Long? = null) = if (id == null) "diet_editor" else "diet_editor?recordId=$id"
+        fun repeatRoute(id: Long) = "diet_editor?repeatId=$id"
+        fun templateRoute(id: Long) = "diet_editor?templateId=$id"
     }
+    data object DietTemplates : HabitDestination { override val route = "diet_templates" }
     data object DietStats : HabitDestination { override val route = "diet_stats" }
     data object DietSettings : HabitDestination { override val route = "diet_settings" }
 }
@@ -37,6 +40,7 @@ val habitDestinations = listOf(
 
 val dietDestinations = listOf(
     DrawerDestination(HabitDestination.DietDiary, "饮食日记", "🍽️"),
+    DrawerDestination(HabitDestination.DietTemplates, "饮食模板", "📋"),
     DrawerDestination(HabitDestination.DietStats, "饮食统计", "📊"),
     DrawerDestination(HabitDestination.DietSettings, "饮食设置", "⚙️"),
 )

@@ -27,6 +27,7 @@ fun DietDiaryScreen(
     onOpenDrawer: () -> Unit,
     onAdd: () -> Unit,
     onOpenRecord: (Long) -> Unit,
+    onRepeatRecord: (Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val weekStart = state.selectedDate.minusDays((state.selectedDate.dayOfWeek.value - 1).toLong())
@@ -90,14 +91,14 @@ fun DietDiaryScreen(
                 }
             }
             items(state.records, key = MealRecord::id) { record ->
-                MealRecordCard(record, onOpenRecord)
+                MealRecordCard(record, onOpenRecord, onRepeatRecord)
             }
         }
     }
 }
 
 @Composable
-private fun MealRecordCard(record: MealRecord, onOpen: (Long) -> Unit) {
+private fun MealRecordCard(record: MealRecord, onOpen: (Long) -> Unit, onRepeat: (Long) -> Unit) {
     HabitCard(Modifier.fillMaxWidth().testTag("diet_record_${record.id}")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (record.recordType == DietRecordType.BEVERAGE) "☕" else mealEmoji(record.mealType), style = MaterialTheme.typography.headlineSmall)
@@ -108,7 +109,10 @@ private fun MealRecordCard(record: MealRecord, onOpen: (Long) -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(record.finalCalories?.let { "$it kcal" } ?: "—")
-                TextButton(onClick = { onOpen(record.id) }) { Text("查看") }
+                Row {
+                    TextButton(onClick = { onRepeat(record.id) }) { Text("再记一次") }
+                    TextButton(onClick = { onOpen(record.id) }) { Text("查看") }
+                }
             }
         }
     }

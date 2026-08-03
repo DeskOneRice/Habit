@@ -124,6 +124,7 @@ private class WorkbenchViewModelFactory(
             checkInRepository = container.checkInRepository,
             dateProvider = container.dateProvider,
             dietRepository = container.dietRepository,
+            dietTemplateRepository = container.dietTemplateRepository,
         ) as T
 }
 

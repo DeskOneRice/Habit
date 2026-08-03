@@ -23,12 +23,14 @@ import com.habit.app.data.repository.RoomCategoryRepository
 import com.habit.app.data.repository.RoomCheckInRepository
 import com.habit.app.data.repository.RoomHabitRepository
 import com.habit.app.data.repository.RoomDietRepository
+import com.habit.app.data.repository.RoomDietTemplateRepository
 import com.habit.app.data.photos.AndroidDietPhotoStore
 import com.habit.app.domain.repository.CalendarRepository
 import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.domain.repository.CheckInRepository
 import com.habit.app.domain.repository.HabitRepository
 import com.habit.app.domain.repository.DietRepository
+import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.SystemDeviceDateProvider
 import java.time.Clock
@@ -61,6 +63,11 @@ class AppContainer(
     )
     val dietRepository: DietRepository = RoomDietRepository(database, clock)
     val dietPhotoStore = AndroidDietPhotoStore(applicationContext)
+    val dietTemplateRepository: DietTemplateRepository = RoomDietTemplateRepository(
+        database,
+        dietPhotoStore,
+        clock,
+    )
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)

@@ -43,6 +43,9 @@ fun DietEditorScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showPhotoSource by remember { mutableStateOf(false) }
+    var showSaveTemplate by remember { mutableStateOf(false) }
+    var templateName by remember { mutableStateOf("") }
+    var templateWithPhotos by remember { mutableStateOf(false) }
     var cameraTarget by remember { mutableStateOf<CameraPhotoTarget?>(null) }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
         viewModel.importPhotos(it)
@@ -121,6 +124,14 @@ fun DietEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            OutlinedButton(
+                onClick = {
+                    templateName = state.beverageName.ifBlank { state.description }.take(24)
+                    templateWithPhotos = false
+                    showSaveTemplate = true
+                },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("存为模板") }
             Button(
                 onClick = { viewModel.save(onSaved) },
                 enabled = !state.isSaving,
@@ -200,6 +211,36 @@ fun DietEditorScreen(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showPhotoSource = false }) { Text("取消") } },
+        )
+    }
+    if (showSaveTemplate) {
+        AlertDialog(
+            onDismissRequest = { showSaveTemplate = false },
+            title = { Text("保存饮食模板") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = templateName,
+                        onValueChange = { templateName = it },
+                        label = { Text("模板名称") },
+                        singleLine = true,
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("包含照片", modifier = Modifier.weight(1f))
+                        Switch(checked = templateWithPhotos, onCheckedChange = { templateWithPhotos = it })
+                    }
+                    Text("关闭时只保存文字和点单属性。", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.saveAsTemplate(templateName, templateWithPhotos) { showSaveTemplate = false }
+                    },
+                    enabled = templateName.isNotBlank(),
+                ) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { showSaveTemplate = false }) { Text("取消") } },
         )
     }
 }

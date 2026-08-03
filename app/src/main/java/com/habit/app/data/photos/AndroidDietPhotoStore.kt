@@ -65,7 +65,7 @@ class AndroidDietPhotoStore(private val context: Context) : DietPhotoStore {
     override suspend fun copy(relativePath: String): DietPhoto = withContext(Dispatchers.IO) {
         val source = policy.resolve(relativePath)
         require(source.isFile) { "照片不存在" }
-        val target = File(library, "${UUID.randomUUID()}.jpg")
+        val target = File(staging, "${UUID.randomUUID()}.jpg")
         source.inputStream().use { input -> FileOutputStream(target).use { output -> copyLimited(input, output) } }
         validateImage(target)
         DietPhoto(relativePath = relative(target), sortOrder = 0)

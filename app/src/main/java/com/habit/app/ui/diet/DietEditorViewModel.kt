@@ -13,7 +13,10 @@ import com.habit.app.data.photos.MAX_DIET_PHOTOS
 import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
+import com.habit.app.domain.model.DietTemplateDraft
+import com.habit.app.domain.model.toRepeatDraft
 import com.habit.app.domain.repository.DietRepository
+import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.stats.calculateCalories
 import com.habit.app.domain.stats.suggestMealType
 import com.habit.app.domain.time.DeviceDateProvider
@@ -76,6 +79,9 @@ class DietEditorViewModel(
     private val dateProvider: DeviceDateProvider,
     private val clock: Clock = Clock.systemUTC(),
     private val photoStore: DietPhotoStore? = null,
+    private val repeatRecordId: Long? = null,
+    private val templateId: Long? = null,
+    private val templateRepository: DietTemplateRepository? = null,
 ) : ViewModel() {
     private val now = Instant.now(clock).atZone(dateProvider.zoneId)
     private val mutableState = MutableStateFlow(
@@ -113,7 +119,37 @@ class DietEditorViewModel(
                     photos = record.photos,
                 )
             }
+        } else if (repeatRecordId != null) viewModelScope.launch {
+            val source = repository.observeRecord(repeatRecordId).filterNotNull().first()
+            applyDraft(source.toRepeatDraft(clock.millis(), dateProvider.today().toEpochDay()))
+        } else if (templateId != null && templateRepository != null) viewModelScope.launch {
+            applyDraft(templateRepository.createMealDraft(templateId, clock.millis(), dateProvider.today().toEpochDay()))
         }
+    }
+
+    private fun applyDraft(draft: MealRecordDraft) {
+        val occurred = Instant.ofEpochMilli(draft.occurredAt).atZone(dateProvider.zoneId)
+        val drink = draft.beverage
+        mutableState.value = DietEditorUiState(
+            recordType = draft.recordType,
+            mealType = draft.mealType ?: MealType.SNACK,
+            date = LocalDate.ofEpochDay(draft.recordEpochDay),
+            time = occurred.toLocalTime().withSecond(0).withNano(0),
+            description = draft.description,
+            foodItems = draft.foodItems,
+            finalCaloriesText = draft.manualFinalCalories?.toString().orEmpty(),
+            beverageCategory = drink?.category ?: BeverageCategory.COFFEE,
+            brandOrStore = drink?.brandOrStore.orEmpty(),
+            beverageName = drink?.beverageName.orEmpty(),
+            sizeOrVolume = drink?.sizeOrVolume.orEmpty(),
+            temperature = drink?.temperature.orEmpty(),
+            iceLevel = drink?.iceLevel.orEmpty(),
+            sweetness = drink?.sweetness.orEmpty(),
+            toppings = drink?.toppings?.joinToString("、").orEmpty(),
+            cupCountText = drink?.cupCount?.toString() ?: "1",
+            note = draft.note,
+            photos = draft.photos,
+        )
     }
 
     fun update(block: DietEditorUiState.() -> DietEditorUiState) {
@@ -235,11 +271,57 @@ class DietEditorViewModel(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                photoStore?.removeOrphans(repository.referencedPhotoPaths())
                 mutableState.value = mutableState.value.copy(message = error.message ?: "保存失败")
             } finally {
                 mutableState.value = mutableState.value.copy(isSaving = false)
             }
         }
+    }
+
+    fun saveAsTemplate(name: String, includePhotos: Boolean, onSaved: () -> Unit) {
+        val templates = templateRepository ?: return
+        viewModelScope.launch {
+            try {
+                templates.save(
+                    DietTemplateDraft(
+                        name = name,
+                        meal = buildDraft(mutableState.value, mutableState.value.photos),
+                        includePhotos = includePhotos,
+                    ),
+                )
+                onSaved()
+            } catch (error: Exception) {
+                mutableState.value = mutableState.value.copy(message = error.message ?: "模板保存失败")
+            }
+        }
+    }
+
+    private fun buildDraft(current: DietEditorUiState, photos: List<DietPhoto>): MealRecordDraft {
+        val occurredAt = current.date.atTime(current.time).atZone(dateProvider.zoneId).toInstant().toEpochMilli()
+        val beverage = if (current.recordType == DietRecordType.BEVERAGE) BeverageDetails(
+            current.beverageCategory,
+            current.brandOrStore,
+            current.beverageName,
+            current.sizeOrVolume,
+            current.temperature,
+            current.iceLevel,
+            current.sweetness,
+            current.toppings.split('、', ',', '，').map(String::trim).filter(String::isNotBlank),
+            current.cupCountText.toIntOrNull() ?: 0,
+        ) else null
+        return MealRecordDraft(
+            current.recordType,
+            if (current.recordType == DietRecordType.MEAL) current.mealType else null,
+            occurredAt,
+            current.date.toEpochDay(),
+            current.description,
+            current.foodItems,
+            current.finalCaloriesText.toIntOrNull(),
+            beverage,
+            current.note,
+            photos,
+        )
     }
 
     fun delete(onDeleted: () -> Unit) {

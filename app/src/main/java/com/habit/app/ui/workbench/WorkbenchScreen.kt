@@ -52,6 +52,7 @@ fun WorkbenchScreen(
     onOpenHabit: (Long) -> Unit,
     onOpenDiet: () -> Unit,
     onAddDiet: () -> Unit,
+    onUseDietTemplate: (Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
@@ -87,6 +88,24 @@ fun WorkbenchScreen(
                 }
                 item { RecentWeekCard(state.recentDays, onOpenCalendar) }
                 item { DietTodayCard(state, onOpenDiet, onAddDiet) }
+                if (state.quickDietTemplates.isNotEmpty()) {
+                    item {
+                        HabitCard(Modifier.fillMaxWidth()) {
+                            Text("饮食快捷记录", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(8.dp))
+                            state.quickDietTemplates.forEach { template ->
+                                TextButton(
+                                    onClick = { onUseDietTemplate(template.id) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(if (template.draft.recordType.name == "BEVERAGE") "☕" else "🍱")
+                                    Text(template.name, modifier = Modifier.weight(1f).padding(start = 10.dp))
+                                    Text("记录")
+                                }
+                            }
+                        }
+                    }
+                }
                 item {
                     HabitCard(Modifier.fillMaxWidth()) {
                         Text("本月数据", style = MaterialTheme.typography.titleMedium)

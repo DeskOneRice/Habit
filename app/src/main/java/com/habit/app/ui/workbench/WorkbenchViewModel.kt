@@ -12,6 +12,8 @@ import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.domain.repository.CheckInRepository
 import com.habit.app.domain.repository.ToggleResult
 import com.habit.app.domain.repository.DietRepository
+import com.habit.app.domain.repository.DietTemplateRepository
+import com.habit.app.domain.model.DietTemplate
 import com.habit.app.domain.stats.summarizeDiet
 import com.habit.app.domain.stats.MonthStats
 import com.habit.app.domain.time.DeviceDateProvider
@@ -54,6 +56,7 @@ data class WorkbenchUiState(
     val dietRecordCount: Int = 0,
     val dietCalories: Int? = null,
     val beverageCups: Int = 0,
+    val quickDietTemplates: List<DietTemplate> = emptyList(),
 ) {
     val completedCount: Int get() = habits.count(WorkbenchHabitItem::checked)
     val totalCount: Int get() = habits.size
@@ -93,6 +96,7 @@ class WorkbenchViewModel(
     private val checkInRepository: CheckInRepository,
     private val dateProvider: DeviceDateProvider,
     private val dietRepository: DietRepository,
+    private val dietTemplateRepository: DietTemplateRepository? = null,
 ) : ViewModel() {
     private val deviceDate = MutableStateFlow(dateProvider.snapshot())
     private val togglingHabitIds = MutableStateFlow<Set<Long>>(emptySet())
@@ -162,13 +166,17 @@ class WorkbenchViewModel(
                 buildWorkbenchState(today, day, week, month, historyById, categories)
             }
         }
-        return combine(habitContent, dietRepository.observeDay(today.toEpochDay())) { current, records ->
+        val dietContent = combine(habitContent, dietRepository.observeDay(today.toEpochDay())) { current, records ->
             val summary = summarizeDiet(records, today.toEpochDay(), today.toEpochDay())
             current.copy(
                 dietRecordCount = records.size,
                 dietCalories = summary.totalCalories,
                 beverageCups = summary.beverageCups,
             )
+        }
+        val templates = dietTemplateRepository?.observeAll() ?: flowOf(emptyList())
+        return combine(dietContent, templates) { current, available ->
+            current.copy(quickDietTemplates = available.sortedBy { it.sortOrder }.take(4))
         }
     }
 

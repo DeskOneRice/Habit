@@ -27,6 +27,8 @@ import com.habit.app.ui.diet.DietDiaryScreen
 import com.habit.app.ui.diet.DietDiaryViewModel
 import com.habit.app.ui.diet.DietEditorScreen
 import com.habit.app.ui.diet.DietEditorViewModel
+import com.habit.app.ui.diet.DietTemplateScreen
+import com.habit.app.ui.diet.DietTemplateViewModel
 import com.habit.app.ui.diet.DietSettingsScreen
 import com.habit.app.ui.diet.DietSettingsViewModel
 import com.habit.app.ui.diet.DietStatsScreen
@@ -66,6 +68,7 @@ fun HabitNavHost(
                 onOpenHabit = { navController.navigate(HabitDestination.HabitDetail.route(it)) },
                 onOpenDiet = { navController.navigate(HabitDestination.DietDiary.route) },
                 onAddDiet = { navController.navigate(HabitDestination.DietEditor.route()) },
+                onUseDietTemplate = { navController.navigate(HabitDestination.DietEditor.templateRoute(it)) },
             )
         }
         composable(HabitDestination.Calendar.route) {
@@ -175,15 +178,29 @@ fun HabitNavHost(
                 onOpenDrawer = onOpenDrawer,
                 onAdd = { navController.navigate(HabitDestination.DietEditor.route()) },
                 onOpenRecord = { navController.navigate(HabitDestination.DietEditor.route(it)) },
+                onRepeatRecord = { navController.navigate(HabitDestination.DietEditor.repeatRoute(it)) },
+            )
+        }
+        composable(HabitDestination.DietTemplates.route) {
+            DietTemplateScreen(
+                viewModel = viewModel(factory = DietTemplateFactory(container)),
+                onOpenDrawer = onOpenDrawer,
+                onUseTemplate = { navController.navigate(HabitDestination.DietEditor.templateRoute(it)) },
             )
         }
         composable(
             route = HabitDestination.DietEditor.route,
-            arguments = listOf(navArgument("recordId") { type = NavType.LongType; defaultValue = -1L }),
+            arguments = listOf(
+                navArgument("recordId") { type = NavType.LongType; defaultValue = -1L },
+                navArgument("repeatId") { type = NavType.LongType; defaultValue = -1L },
+                navArgument("templateId") { type = NavType.LongType; defaultValue = -1L },
+            ),
         ) { entry ->
             val recordId = entry.arguments?.getLong("recordId")?.takeIf { it >= 0 }
+            val repeatId = entry.arguments?.getLong("repeatId")?.takeIf { it >= 0 }
+            val templateId = entry.arguments?.getLong("templateId")?.takeIf { it >= 0 }
             DietEditorScreen(
-                viewModel = viewModel(factory = DietEditorFactory(container, recordId)),
+                viewModel = viewModel(factory = DietEditorFactory(container, recordId, repeatId, templateId)),
                 isEditing = recordId != null,
                 onBack = { navController.popBackStack() },
                 onSaved = { navController.popBackStack() },
@@ -295,6 +312,8 @@ private class DietDiaryFactory(private val container: AppContainer) : ViewModelP
 private class DietEditorFactory(
     private val container: AppContainer,
     private val recordId: Long?,
+    private val repeatId: Long?,
+    private val templateId: Long?,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -303,7 +322,16 @@ private class DietEditorFactory(
             container.dietRepository,
             container.dateProvider,
             photoStore = container.dietPhotoStore,
+            repeatRecordId = repeatId,
+            templateId = templateId,
+            templateRepository = container.dietTemplateRepository,
         ) as T
+}
+
+private class DietTemplateFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietTemplateViewModel(container.dietTemplateRepository) as T
 }
 
 private class DietStatsFactory(private val container: AppContainer) : ViewModelProvider.Factory {

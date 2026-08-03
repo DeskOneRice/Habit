@@ -90,6 +90,9 @@ interface DietDao {
     @Query("SELECT * FROM diet_templates WHERE id = :id")
     suspend fun getTemplate(id: Long): DietTemplateWithDetails?
 
+    @Query("SELECT * FROM diet_templates WHERE id = :id")
+    suspend fun getTemplateEntity(id: Long): DietTemplateEntity?
+
     @Transaction
     @Query("SELECT * FROM diet_templates ORDER BY id")
     suspend fun getAllTemplates(): List<DietTemplateWithDetails>
@@ -99,6 +102,15 @@ interface DietDao {
 
     @Update
     suspend fun updateTemplate(template: DietTemplateEntity): Int
+
+    @Query("UPDATE diet_templates SET name = :name, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun renameTemplate(id: Long, name: String, updatedAt: Long): Int
+
+    @Query("UPDATE diet_templates SET sortOrder = :sortOrder, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTemplateSortOrder(id: Long, sortOrder: Int, updatedAt: Long): Int
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) + 1 FROM diet_templates WHERE recordType = :recordType")
+    suspend fun nextTemplateSortOrder(recordType: String): Int
 
     @Insert
     suspend fun insertTemplateFoodItems(items: List<DietTemplateFoodItemEntity>)
