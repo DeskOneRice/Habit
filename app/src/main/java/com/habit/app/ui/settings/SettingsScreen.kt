@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -17,6 +16,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.data.backup.ImportMode
 import com.habit.app.domain.time.HabitTimePolicy
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.NavigationMode
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -51,21 +53,24 @@ fun SettingsScreen(
         uri?.let { viewModel.loadImport(it.toString()) }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("settings_screen")
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row {
-            TextButton(
-                onOpenDrawer,
-                Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("open_drawer"),
-            ) { Text("☰") }
-            Text("主题与设置", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 10.dp))
-        }
+    Scaffold(
+        topBar = {
+            HabitTopAppBar(
+                title = "主题与设置",
+                navigationMode = NavigationMode.MENU,
+                onNavigation = onOpenDrawer,
+            )
+        },
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("settings_screen")
+                .padding(contentPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
         Text("外观", style = MaterialTheme.typography.titleLarge)
         ThemePicker(
             selectedTheme = state.selectedTheme,
@@ -129,7 +134,8 @@ fun SettingsScreen(
             )
         }
         Text("版本", style = MaterialTheme.typography.titleLarge)
-        Text("0.4.0 · 内测版")
+            Text("0.4.1 · 内测版")
+        }
     }
 
     state.importPreview?.let { preview ->

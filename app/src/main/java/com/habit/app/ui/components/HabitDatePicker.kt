@@ -68,10 +68,22 @@ fun HabitDatePickerDialog(
                     "${draftDate.year}年${draftDate.monthValue}月${draftDate.dayOfMonth}日",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { visibleMonth = visibleMonth.minusMonths(1) }) { Text("‹") }
-                    TextButton(onClick = {}) { Text("${visibleMonth.year}年${visibleMonth.monthValue}月") }
-                    TextButton(onClick = { visibleMonth = visibleMonth.plusMonths(1) }) { Text("›") }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LightweightArrowButton(
+                        onClick = { visibleMonth = visibleMonth.minusMonths(1) },
+                        direction = ArrowDirection.PREVIOUS,
+                        contentDescription = "上个月",
+                    )
+                    Text("${visibleMonth.year}年${visibleMonth.monthValue}月")
+                    LightweightArrowButton(
+                        onClick = { visibleMonth = visibleMonth.plusMonths(1) },
+                        direction = ArrowDirection.NEXT,
+                        contentDescription = "下个月",
+                    )
                 }
                 Row(Modifier.fillMaxWidth()) {
                     HABIT_WEEKDAY_LABELS.forEachIndexed { index, label ->

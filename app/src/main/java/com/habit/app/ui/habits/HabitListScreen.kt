@@ -9,12 +9,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.Habit
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.components.habitEmoji
 
 @Composable
@@ -29,6 +30,17 @@ fun HabitListScreen(
     var archivedExpanded by remember { mutableStateOf(false) }
     Scaffold(
         modifier = Modifier.testTag("habit_list_screen"),
+        topBar = {
+            HabitTopAppBar(
+                title = "我的习惯",
+                navigationMode = NavigationMode.MENU,
+                onNavigation = onOpenDrawer,
+            ) {
+                TextButton(onClick = onCategories) {
+                    Text("管理分类")
+                }
+            }
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onCreate,
@@ -44,23 +56,11 @@ fun HabitListScreen(
             modifier = Modifier.fillMaxSize().testTag("habit_list_scroll"),
             contentPadding = PaddingValues(
                 start = 20.dp,
-                top = contentPadding.calculateTopPadding() + 20.dp,
+                top = contentPadding.calculateTopPadding() + 12.dp,
                 end = 20.dp,
                 bottom = contentPadding.calculateBottomPadding() + 20.dp,
             ),
         ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onOpenDrawer, Modifier.testTag("open_drawer")) { Text("☰") }
-                        Text("我的习惯", style = MaterialTheme.typography.headlineSmall)
-                    }
-                    TextButton(onCategories) { Text("管理分类") }
-                }
-            }
             state.categories
                 .filter { category -> state.active.any { it.categoryId == category.id } }
                 .forEach { category ->

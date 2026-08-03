@@ -15,6 +15,7 @@ import com.habit.app.ui.calendar.CalendarScreen
 import com.habit.app.ui.calendar.CalendarViewModel
 import com.habit.app.ui.categories.CategoryScreen
 import com.habit.app.ui.categories.CategoryViewModel
+import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.habits.HabitDetailScreen
 import com.habit.app.ui.habits.HabitDetailViewModel
 import com.habit.app.ui.habits.HabitEditorScreen
@@ -169,7 +170,15 @@ fun HabitNavHost(
         composable(HabitDestination.Categories.route) {
             CategoryScreen(
                 viewModel = viewModel(factory = CategoryFactory(container)),
-                onBack = onOpenDrawer,
+                navigationMode = NavigationMode.BACK,
+                onNavigation = { navController.popBackStack() },
+            )
+        }
+        composable(HabitDestination.DrawerCategories.route) {
+            CategoryScreen(
+                viewModel = viewModel(factory = CategoryFactory(container)),
+                navigationMode = NavigationMode.MENU,
+                onNavigation = onOpenDrawer,
             )
         }
         composable(HabitDestination.DietDiary.route) {

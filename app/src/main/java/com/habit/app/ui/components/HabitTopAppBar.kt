@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 enum class NavigationMode { MENU, BACK }
 
@@ -26,20 +27,30 @@ fun HabitTopAppBar(
     onNavigation: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    val description = if (navigationMode == NavigationMode.MENU) "打开菜单" else "返回"
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
-            TextButton(
-                onClick = onNavigation,
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .offset(x = (-4).dp)
-                    .semantics { contentDescription = description }
-                    .testTag(if (navigationMode == NavigationMode.MENU) "open_drawer" else "navigate_back"),
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text(if (navigationMode == NavigationMode.MENU) "☰" else "←")
+            if (navigationMode == NavigationMode.BACK) {
+                LightweightArrowButton(
+                    onClick = onNavigation,
+                    direction = ArrowDirection.PREVIOUS,
+                    contentDescription = "返回",
+                    modifier = Modifier
+                        .offset(x = (-4).dp)
+                        .testTag("navigate_back"),
+                )
+            } else {
+                TextButton(
+                    onClick = onNavigation,
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .offset(x = (-4).dp)
+                        .semantics { contentDescription = "打开菜单" }
+                        .testTag("open_drawer"),
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text("☰", fontSize = 26.sp)
+                }
             }
         },
         actions = actions,

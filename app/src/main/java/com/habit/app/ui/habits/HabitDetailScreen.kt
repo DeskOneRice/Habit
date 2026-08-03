@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -19,10 +18,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,7 +41,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.Habit
+import com.habit.app.ui.components.ArrowDirection
 import com.habit.app.ui.components.DeviceDateRefreshEffect
+import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.LightweightArrowButton
+import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.components.habitEmoji
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -63,94 +66,88 @@ fun HabitDetailScreen(
 
     DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("habit_detail_screen")
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+    Scaffold(
+        topBar = {
+            HabitTopAppBar(
+                title = "习惯详情",
+                navigationMode = NavigationMode.BACK,
+                onNavigation = onBack,
+            )
+        },
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("habit_detail_screen")
+                .padding(contentPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            FilledIconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .semantics { contentDescription = "返回习惯列表" },
-            ) {
-                Text("‹")
-            }
-            Text("习惯详情", style = MaterialTheme.typography.titleLarge)
-            Box(Modifier.size(48.dp))
-        }
-
-        state.history?.let { snapshot ->
-            val habit = snapshot.habit
-            HabitIdentity(habit, state.categoryName)
-            StatisticsRow(
-                total = snapshot.stats.total,
-                current = snapshot.stats.currentStreak,
-                longest = snapshot.stats.longestStreak,
-            )
-            HabitMonthSection(
-                month = state.visibleMonth,
-                habit = habit,
-                completedEpochDays = snapshot.completedEpochDays,
-                completedCount = state.monthProgress.completedCount,
-                expectedCount = state.monthProgress.expectedCount,
-                completionRate = state.monthProgress.completionRate,
-                onPreviousMonth = viewModel::previousMonth,
-                onNextMonth = viewModel::nextMonth,
-            )
-            OutlinedButton(
-                onClick = { onEdit(habit.id) },
-                enabled = !state.actionInProgress,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .testTag("edit_habit"),
-            ) {
-                Text("编辑习惯")
-            }
-            if (habit.archivedEpochDay == null) {
+            state.history?.let { snapshot ->
+                val habit = snapshot.habit
+                HabitIdentity(habit, state.categoryName)
+                StatisticsRow(
+                    total = snapshot.stats.total,
+                    current = snapshot.stats.currentStreak,
+                    longest = snapshot.stats.longestStreak,
+                )
+                HabitMonthSection(
+                    month = state.visibleMonth,
+                    habit = habit,
+                    completedEpochDays = snapshot.completedEpochDays,
+                    completedCount = state.monthProgress.completedCount,
+                    expectedCount = state.monthProgress.expectedCount,
+                    completionRate = state.monthProgress.completionRate,
+                    onPreviousMonth = viewModel::previousMonth,
+                    onNextMonth = viewModel::nextMonth,
+                )
                 OutlinedButton(
-                    onClick = { showArchiveConfirmation = true },
+                    onClick = { onEdit(habit.id) },
                     enabled = !state.actionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
-                        .testTag("archive_habit"),
+                        .testTag("edit_habit"),
                 ) {
-                    Text("归档习惯")
+                    Text("编辑习惯")
                 }
-            } else {
-                Text("此习惯已归档，历史记录仍可查看。")
+                if (habit.archivedEpochDay == null) {
+                    OutlinedButton(
+                        onClick = { showArchiveConfirmation = true },
+                        enabled = !state.actionInProgress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("archive_habit"),
+                    ) {
+                        Text("归档习惯")
+                    }
+                } else {
+                    Text("此习惯已归档，历史记录仍可查看。")
+                }
+                TextButton(
+                    onClick = { deleteStage = 1 },
+                    enabled = !state.actionInProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag("delete_habit"),
+                ) {
+                    Text("删除习惯")
+                }
             }
-            TextButton(
-                onClick = { deleteStage = 1 },
-                enabled = !state.actionInProgress,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .testTag("delete_habit"),
-            ) {
-                Text("删除习惯")
-            }
-        }
 
-        if (state.loading) {
-            Text("正在加载习惯详情…")
-        }
-        state.message?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.testTag("habit_detail_message"),
-            )
+            if (state.loading) {
+                Text("正在加载习惯详情…")
+            }
+            state.message?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("habit_detail_message"),
+                )
+            }
         }
     }
 
@@ -309,29 +306,25 @@ private fun HabitMonthSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilledIconButton(
+            LightweightArrowButton(
                 onClick = onPreviousMonth,
+                direction = ArrowDirection.PREVIOUS,
+                contentDescription = "上个月",
                 modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .testTag("habit_detail_previous_month")
-                    .semantics { contentDescription = "上个月" },
-            ) {
-                Text("‹")
-            }
+                    .testTag("habit_detail_previous_month"),
+            )
             Text(
                 text = "${month.year}年${month.monthValue}月",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.testTag("habit_detail_month_title"),
             )
-            FilledIconButton(
+            LightweightArrowButton(
                 onClick = onNextMonth,
+                direction = ArrowDirection.NEXT,
+                contentDescription = "下个月",
                 modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    .testTag("habit_detail_next_month")
-                    .semantics { contentDescription = "下个月" },
-            ) {
-                Text("›")
-            }
+                    .testTag("habit_detail_next_month"),
+            )
         }
         SingleHabitMonthGrid(
             month = month,

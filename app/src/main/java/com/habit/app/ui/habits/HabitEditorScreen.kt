@@ -37,9 +37,25 @@ fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepos
     LaunchedEffect(state.nameError) { if (state.nameError != null) errorRequester.bringIntoView() }
     var showStartDatePicker by remember { mutableStateOf(false) }
     var showArchive by remember { mutableStateOf(false) }; var deleteStage by remember { mutableStateOf(0) }
-    Scaffold(bottomBar = { Button({ viewModel.save(onSaved) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 20.dp).testTag("save_habit"), enabled = !state.saving) { Text(if (state.saving) "保存中…" else "保存") } }) { contentPadding ->
+    Scaffold(
+        topBar = {
+            HabitTopAppBar(
+                if (state.habitId == null) "新建习惯" else "编辑习惯",
+                NavigationMode.BACK,
+                onBack,
+            )
+        },
+        bottomBar = {
+            Button(
+                onClick = { viewModel.save(onSaved) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 20.dp).testTag("save_habit"),
+                enabled = !state.saving,
+            ) {
+                Text(if (state.saving) "保存中…" else "保存")
+            }
+        },
+    ) { contentPadding ->
     Column(Modifier.fillMaxSize().padding(contentPadding).verticalScroll(scrollState).padding(20.dp).testTag("habit_editor_screen"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        HabitTopAppBar(if (state.habitId == null) "新建习惯" else "编辑习惯", NavigationMode.BACK, onBack)
         state.nameError?.let { Text(it, modifier = Modifier.bringIntoViewRequester(errorRequester).testTag("habit_name_error"), color = MaterialTheme.colorScheme.error) }
         OutlinedTextField(state.name, viewModel::onNameChange, Modifier.fillMaxWidth().testTag("habit_name"), label = { Text("习惯名称") }, singleLine = true)
         Text("选择图标"); EmojiPicker(state.iconKey, recentEmojiKeys) { key -> viewModel.onEmojiChange(key); scope.launch { emojiPreferences.record(key) } }

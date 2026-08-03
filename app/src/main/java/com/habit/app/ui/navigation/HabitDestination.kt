@@ -14,6 +14,7 @@ sealed interface HabitDestination {
     }
     data object Settings : HabitDestination { override val route = "settings" }
     data object Categories : HabitDestination { override val route = "categories" }
+    data object DrawerCategories : HabitDestination { override val route = "categories_drawer" }
     data object DietDiary : HabitDestination { override val route = "diet" }
     data object DietEditor : HabitDestination {
         override val route = "diet_editor?recordId={recordId}&repeatId={repeatId}&templateId={templateId}"
@@ -35,7 +36,7 @@ data class DrawerDestination(
 val habitDestinations = listOf(
     DrawerDestination(HabitDestination.Calendar, "习惯日历", "📅"),
     DrawerDestination(HabitDestination.Habits, "我的习惯", "✅"),
-    DrawerDestination(HabitDestination.Categories, "分类管理", "🗂️"),
+    DrawerDestination(HabitDestination.DrawerCategories, "分类管理", "🗂️"),
 )
 
 val dietDestinations = listOf(
@@ -50,3 +51,13 @@ val topLevelDestinations = listOf(
 ) + habitDestinations + dietDestinations + DrawerDestination(HabitDestination.Settings, "主题与设置", "🎨")
 
 val drawerTopLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()
+
+internal data class DrawerNavigationPolicy(
+    val saveState: Boolean,
+    val restoreState: Boolean,
+)
+
+internal val drawerNavigationPolicy = DrawerNavigationPolicy(
+    saveState = false,
+    restoreState = false,
+)

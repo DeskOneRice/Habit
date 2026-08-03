@@ -93,9 +93,11 @@ private fun AppNavigation(startDestination: HabitDestination, container: AppCont
                         onDestination = { destination ->
                             scope.launch { drawerState.close() }
                             navController.navigate(destination.route) {
-                                popUpTo(HabitDestination.Workbench.route) { saveState = true }
+                                popUpTo(HabitDestination.Workbench.route) {
+                                    saveState = drawerNavigationPolicy.saveState
+                                }
                                 launchSingleTop = true
-                                restoreState = true
+                                restoreState = drawerNavigationPolicy.restoreState
                             }
                         },
                     )
