@@ -127,7 +127,7 @@ fun SettingsScreen(
             )
         }
         Text("版本", style = MaterialTheme.typography.titleLarge)
-        Text("0.3.0 · 内测版")
+        Text("0.3.1 · 内测版")
     }
 
     state.importPreview?.let { preview ->
