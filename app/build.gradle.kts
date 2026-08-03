@@ -60,6 +60,8 @@ android {
         buildConfig = true
         compose = true
     }
+
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
 
 kotlin {
