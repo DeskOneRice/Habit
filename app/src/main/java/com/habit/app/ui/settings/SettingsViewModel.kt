@@ -85,7 +85,10 @@ class SettingsViewModel(
         val preview = importPreview.value ?: return@runBackupOperation
         val result = requireBackupOperations().import(preview, mode)
         importPreview.value = null
-        message.value = "导入完成：${result.summary.habits} 个习惯，${result.summary.checkIns} 条打卡"
+        val photoMessage = if (result.importedPhotoCount > 0 || result.skippedPhotoCount > 0) {
+            "，${result.importedPhotoCount} 张照片${if (result.skippedPhotoCount > 0) "（跳过 ${result.skippedPhotoCount} 张无效照片）" else ""}"
+        } else ""
+        message.value = "导入完成：${result.summary.habits} 个习惯，${result.summary.checkIns} 条打卡$photoMessage"
     }
 
     fun changeBackupFolder(uri: String) = runBackupOperation {

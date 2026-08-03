@@ -37,7 +37,7 @@ class HabitBackupCodecTest {
 
     @Test
     fun schemaOneBackupDecodesWithEmptyDietData() {
-        val legacy = HabitBackupCodec.encode(sampleBackup()).replace("\"schemaVersion\":2", "\"schemaVersion\":1")
+        val legacy = HabitBackupCodec.encode(sampleBackup()).replace("\"schemaVersion\":3", "\"schemaVersion\":1")
             .replace(Regex(",\"mealRecords\":\\[.*?],\"foodItems\":\\[.*?],\"beverageDetails\":\\[.*?],\"beverageToppings\":\\[.*?]"), "")
 
         val decoded = HabitBackupCodec.decode(legacy)
@@ -48,6 +48,7 @@ class HabitBackupCodecTest {
     @Test
     fun schemaTwoRoundTripPreservesDrinkDetails() {
         val source = sampleBackup().copy(
+            schemaVersion = 2,
             mealRecords = listOf(
                 BackupMealRecord(1, "BEVERAGE", null, 200, 20, "", null, 260, "MANUAL", "", 100, 100),
             ),

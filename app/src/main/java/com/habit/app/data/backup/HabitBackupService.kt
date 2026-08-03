@@ -18,6 +18,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import com.habit.app.data.photos.DietPhotoStore
+import java.io.BufferedInputStream
+import java.io.File
+import java.util.UUID
 
 data class ExportResult(
     val fileName: String,
@@ -27,13 +31,24 @@ data class ExportResult(
     val mealRecords: Int = 0,
 )
 
-data class ImportPreview(val backup: HabitBackup) {
+data class ImportPreview(
+    val backup: HabitBackup,
+    val sourceUri: String? = null,
+    val isArchive: Boolean = false,
+    val skippedPhotoCount: Int = 0,
+) {
     val categories: Int get() = backup.categories.size
     val habits: Int get() = backup.habits.size
     val checkIns: Int get() = backup.checkIns.size
+    val mealRecords: Int get() = backup.mealRecords.size
+    val photos: Int get() = backup.dietPhotos.size
 }
 
-data class ImportResult(val summary: ImportSummary)
+data class ImportResult(
+    val summary: ImportSummary,
+    val importedPhotoCount: Int = 0,
+    val skippedPhotoCount: Int = 0,
+)
 
 sealed interface FolderChangeResult {
     data class Success(val displayName: String, val migratedFiles: Int) : FolderChangeResult
@@ -54,8 +69,9 @@ class HabitBackupService(
     private val preferencesRepository: BackupPreferencesRepository,
     private val documentStore: BackupDocumentStore,
     private val folderMigrator: BackupFolderMigrator,
+    private val photoStore: DietPhotoStore,
     private val clock: Clock = Clock.systemUTC(),
-    private val appVersion: String = "0.3.2",
+    private val appVersion: String = "0.4.0",
 ) : BackupOperations {
     private val applicationContext = context.applicationContext
     private val resolver = applicationContext.contentResolver
@@ -84,34 +100,91 @@ class HabitBackupService(
             foodItems = database.foodItems,
             beverageDetails = database.beverageDetails,
             beverageToppings = database.beverageToppings,
+            dietPhotos = database.dietPhotos,
+            dietTemplates = database.dietTemplates,
+            dietTemplateFoodItems = database.dietTemplateFoodItems,
+            dietTemplateToppings = database.dietTemplateToppings,
             preferences = preferenceSnapshot.content.preferences,
         )
         val fileName = backupFileName(now)
-        documentStore.write(
+        documentStore.writeStream(
             preferenceSnapshot.folder,
             fileName,
-            HabitBackupCodec.encode(backup).encodeToByteArray(),
-        )
+            "application/zip",
+        ) { output ->
+            HabitBackupArchive.write(output, backup) { path ->
+                runCatching { photoStore.file(path) }.getOrNull()?.takeIf(File::isFile)?.inputStream()
+            }
+        }
         return ExportResult(fileName, backup.categories.size, backup.habits.size, backup.checkIns.size, backup.mealRecords.size)
     }
 
     override suspend fun preview(uri: String): ImportPreview = withContext(Dispatchers.IO) {
-        val content = resolver.openInputStream(Uri.parse(uri))?.bufferedReader()?.use { it.readText() }
-            ?: error("无法读取所选备份")
-        ImportPreview(HabitBackupCodec.decode(content))
+        val source = resolver.openInputStream(Uri.parse(uri)) ?: error("无法读取所选备份")
+        BufferedInputStream(source).use { input ->
+            input.mark(4)
+            val signature = ByteArray(4)
+            val count = input.read(signature)
+            input.reset()
+            val isArchive = count >= 2 && signature[0] == 'P'.code.toByte() && signature[1] == 'K'.code.toByte()
+            if (isArchive) {
+                val temp = File(applicationContext.cacheDir, "backup_preview_${UUID.randomUUID()}")
+                try {
+                    val archive = HabitBackupArchive.read(input, temp)
+                    ImportPreview(archive.backup, uri, true, archive.skippedPhotoCount)
+                } finally {
+                    temp.deleteRecursively()
+                }
+            } else {
+                ImportPreview(HabitBackupCodec.decode(input.bufferedReader().readText()), uri, false)
+            }
+        }
     }
 
     override suspend fun import(preview: ImportPreview, mode: ImportMode): ImportResult {
         val current = preferencesRepository.current().content
+        var backupToImport = preview.backup
+        val importedPaths = mutableListOf<String>()
+        var skippedPhotos = if (preview.isArchive) 0 else preview.skippedPhotoCount
+        if (preview.isArchive) {
+            val uri = requireNotNull(preview.sourceUri) { "备份来源已失效" }
+            val temp = File(applicationContext.cacheDir, "backup_import_${UUID.randomUUID()}")
+            try {
+                val archive = resolver.openInputStream(Uri.parse(uri))?.use { HabitBackupArchive.read(it, temp) }
+                    ?: error("无法重新读取所选备份")
+                val remapped = mutableListOf<BackupDietPhoto>()
+                archive.backup.dietPhotos.forEach { photo ->
+                    val source = archive.photos[photo.relativePath]
+                    if (source == null) {
+                        skippedPhotos += 1
+                    } else {
+                        val imported = runCatching { photoStore.importFile(source) }.getOrNull()
+                        if (imported == null) skippedPhotos += 1 else {
+                            importedPaths += imported.relativePath
+                            remapped += photo.copy(relativePath = imported.relativePath)
+                        }
+                    }
+                }
+                backupToImport = archive.backup.copy(dietPhotos = remapped)
+            } finally {
+                temp.deleteRecursively()
+            }
+        }
         val imported = TimestampedBackupPreferences(
-            preview.backup.preferences,
-            preview.backup.preferencesUpdatedAt,
+            backupToImport.preferences,
+            backupToImport.preferencesUpdatedAt,
         )
-        val summary = roomRepository.importDatabase(preview.backup, mode)
-        preferencesRepository.restore(
-            if (mode == ImportMode.REPLACE) imported else choosePreferences(current, imported),
-        )
-        return ImportResult(summary)
+        return try {
+            val summary = roomRepository.importDatabase(backupToImport, mode)
+            preferencesRepository.restore(
+                if (mode == ImportMode.REPLACE) imported else choosePreferences(current, imported),
+            )
+            photoStore.removeOrphans(roomRepository.referencedPhotoPaths())
+            ImportResult(summary, importedPaths.size, skippedPhotos)
+        } catch (error: Exception) {
+            importedPaths.forEach { photoStore.delete(it) }
+            throw error
+        }
     }
 
     override suspend fun changeFolder(uri: String): FolderChangeResult {
@@ -145,7 +218,7 @@ class HabitBackupService(
 }
 
 internal fun backupFileName(epochMillis: Long): String =
-    "Habit-Backup-${BACKUP_FILE_TIME_FORMAT.format(Instant.ofEpochMilli(epochMillis))}.habitbackup.json"
+    "Habit-Backup-${BACKUP_FILE_TIME_FORMAT.format(Instant.ofEpochMilli(epochMillis))}.habitbackup.zip"
 
 private val BACKUP_FILE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter
     .ofPattern("yyyyMMdd-HHmmss")

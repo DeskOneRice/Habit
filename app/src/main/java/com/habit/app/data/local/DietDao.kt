@@ -100,6 +100,9 @@ interface DietDao {
     @Insert
     suspend fun insertTemplate(template: DietTemplateEntity): Long
 
+    @Insert
+    suspend fun insertTemplates(templates: List<DietTemplateEntity>)
+
     @Update
     suspend fun updateTemplate(template: DietTemplateEntity): Int
 

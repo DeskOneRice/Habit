@@ -10,7 +10,7 @@ class BackupTimePolicyTest {
         val timestamp = Instant.parse("2026-08-03T16:30:45Z").toEpochMilli()
 
         assertEquals(
-            "Habit-Backup-20260804-003045.habitbackup.json",
+            "Habit-Backup-20260804-003045.habitbackup.zip",
             backupFileName(timestamp),
         )
     }

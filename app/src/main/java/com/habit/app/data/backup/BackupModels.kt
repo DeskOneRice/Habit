@@ -1,7 +1,7 @@
 package com.habit.app.data.backup
 
 const val HABIT_BACKUP_FORMAT = "habit-backup"
-const val HABIT_BACKUP_SCHEMA_VERSION = 2
+const val HABIT_BACKUP_SCHEMA_VERSION = 3
 
 data class HabitBackup(
     val format: String = HABIT_BACKUP_FORMAT,
@@ -17,6 +17,10 @@ data class HabitBackup(
     val foodItems: List<BackupFoodItem> = emptyList(),
     val beverageDetails: List<BackupBeverageDetail> = emptyList(),
     val beverageToppings: List<BackupBeverageTopping> = emptyList(),
+    val dietPhotos: List<BackupDietPhoto> = emptyList(),
+    val dietTemplates: List<BackupDietTemplate> = emptyList(),
+    val dietTemplateFoodItems: List<BackupDietTemplateFoodItem> = emptyList(),
+    val dietTemplateToppings: List<BackupDietTemplateTopping> = emptyList(),
 )
 
 data class BackupCategory(
@@ -78,6 +82,56 @@ data class BackupBeverageDetail(
 data class BackupBeverageTopping(
     val id: Long, val mealRecordId: Long, val name: String, val sortOrder: Int,
     val createdAt: Long, val updatedAt: Long,
+)
+
+data class BackupDietPhoto(
+    val id: Long,
+    val mealRecordId: Long?,
+    val templateId: Long?,
+    val relativePath: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+)
+
+data class BackupDietTemplate(
+    val id: Long,
+    val name: String,
+    val recordType: String,
+    val mealType: String?,
+    val description: String,
+    val manualFinalCalories: Int?,
+    val beverageCategory: String?,
+    val brandOrStore: String?,
+    val beverageName: String?,
+    val sizeOrVolume: String?,
+    val temperature: String?,
+    val iceLevel: String?,
+    val sweetness: String?,
+    val cupCount: Int?,
+    val note: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class BackupDietTemplateFoodItem(
+    val id: Long,
+    val templateId: Long,
+    val name: String,
+    val portionText: String?,
+    val calories: Int?,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class BackupDietTemplateTopping(
+    val id: Long,
+    val templateId: Long,
+    val name: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
 )
 
 class InvalidBackupException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)

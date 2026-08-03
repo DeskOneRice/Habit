@@ -81,6 +81,7 @@ class AppContainer(
         preferencesRepository = backupPreferencesRepository,
         documentStore = backupDocumentStore,
         folderMigrator = BackupFolderMigrator(backupDocumentStore),
+        photoStore = dietPhotoStore,
         clock = clock,
     )
 }

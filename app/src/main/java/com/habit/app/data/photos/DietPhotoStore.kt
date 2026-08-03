@@ -29,6 +29,7 @@ interface DietPhotoStore {
     suspend fun acceptCameraTarget(target: CameraPhotoTarget): DietPhoto
     suspend fun commit(photos: List<DietPhoto>): List<DietPhoto>
     suspend fun copy(relativePath: String): DietPhoto
+    suspend fun importFile(source: File): DietPhoto
     suspend fun discard(relativePath: String)
     suspend fun delete(relativePath: String)
     suspend fun removeOrphans(referencedPaths: Set<String>)

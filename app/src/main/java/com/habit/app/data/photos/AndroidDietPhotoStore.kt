@@ -71,6 +71,19 @@ class AndroidDietPhotoStore(private val context: Context) : DietPhotoStore {
         DietPhoto(relativePath = relative(target), sortOrder = 0)
     }
 
+    override suspend fun importFile(source: File): DietPhoto = withContext(Dispatchers.IO) {
+        require(source.isFile && source.length() in 1..MAX_DIET_PHOTO_BYTES) { "备份照片无效" }
+        val target = File(staging, "${UUID.randomUUID()}.jpg")
+        source.inputStream().use { input -> FileOutputStream(target).use { output -> copyLimited(input, output) } }
+        try {
+            validateImage(target)
+            commit(listOf(DietPhoto(relativePath = relative(target), sortOrder = 0))).single()
+        } catch (error: Exception) {
+            target.delete()
+            throw error
+        }
+    }
+
     override suspend fun discard(relativePath: String) = withContext(Dispatchers.IO) {
         val file = policy.resolve(relativePath)
         if (file.parentFile?.canonicalFile == staging.canonicalFile) file.delete()

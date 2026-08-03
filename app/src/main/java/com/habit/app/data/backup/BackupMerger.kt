@@ -78,6 +78,7 @@ object BackupMerger {
         }
 
         val diet = mergeDiet(current, imported)
+        val quick = mergeQuickCapture(current, imported, diet.records)
         val importedPreferencesAreNewer = imported.preferencesUpdatedAt > current.preferencesUpdatedAt
         return current.copy(
             appVersion = imported.appVersion,
@@ -94,9 +95,102 @@ object BackupMerger {
             foodItems = diet.foodItems,
             beverageDetails = diet.beverages,
             beverageToppings = diet.toppings,
+            dietPhotos = quick.photos,
+            dietTemplates = quick.templates,
+            dietTemplateFoodItems = quick.foodItems,
+            dietTemplateToppings = quick.toppings,
             preferences = if (importedPreferencesAreNewer) imported.preferences else current.preferences,
         )
     }
+}
+
+private data class MergedQuickCapture(
+    val photos: List<BackupDietPhoto>,
+    val templates: List<BackupDietTemplate>,
+    val foodItems: List<BackupDietTemplateFoodItem>,
+    val toppings: List<BackupDietTemplateTopping>,
+)
+
+private fun mergeQuickCapture(
+    current: HabitBackup,
+    imported: HabitBackup,
+    mergedRecords: List<BackupMealRecord>,
+): MergedQuickCapture {
+    val templates = current.dietTemplates.toMutableList()
+    val usedTemplateIds = templates.mapTo(mutableSetOf(), BackupDietTemplate::id)
+    var nextTemplateId = (usedTemplateIds.maxOrNull() ?: 0L) + 1
+    val templateMap = mutableMapOf<Long, Long>()
+    val replacedTemplates = mutableSetOf<Long>()
+    imported.dietTemplates.forEach { incoming ->
+        val index = templates.indexOfFirst { it.id == incoming.id && it.createdAt == incoming.createdAt }
+        if (index >= 0) {
+            val existing = templates[index]
+            templateMap[incoming.id] = existing.id
+            if (incoming.updatedAt >= existing.updatedAt) {
+                templates[index] = incoming.copy(id = existing.id)
+                replacedTemplates += existing.id
+            }
+        } else {
+            val id = availableId(incoming.id, usedTemplateIds) { nextTemplateId++ }
+            templates += incoming.copy(id = id)
+            templateMap[incoming.id] = id
+            replacedTemplates += id
+        }
+    }
+
+    val foodItems = current.dietTemplateFoodItems.filterNot { it.templateId in replacedTemplates }.toMutableList()
+    val usedFoodIds = foodItems.mapTo(mutableSetOf(), BackupDietTemplateFoodItem::id)
+    var nextFoodId = (usedFoodIds.maxOrNull() ?: 0L) + 1
+    imported.dietTemplateFoodItems.forEach { incoming ->
+        val parent = templateMap[incoming.templateId] ?: return@forEach
+        if (parent in replacedTemplates) {
+            foodItems += incoming.copy(
+                id = availableId(incoming.id, usedFoodIds) { nextFoodId++ },
+                templateId = parent,
+            )
+        }
+    }
+
+    val toppings = current.dietTemplateToppings.filterNot { it.templateId in replacedTemplates }.toMutableList()
+    val usedToppingIds = toppings.mapTo(mutableSetOf(), BackupDietTemplateTopping::id)
+    var nextToppingId = (usedToppingIds.maxOrNull() ?: 0L) + 1
+    imported.dietTemplateToppings.forEach { incoming ->
+        val parent = templateMap[incoming.templateId] ?: return@forEach
+        if (parent in replacedTemplates) {
+            toppings += incoming.copy(
+                id = availableId(incoming.id, usedToppingIds) { nextToppingId++ },
+                templateId = parent,
+            )
+        }
+    }
+
+    val recordMap = imported.mealRecords.mapNotNull { incoming ->
+        mergedRecords.firstOrNull {
+            it.createdAt == incoming.createdAt && it.occurredAt == incoming.occurredAt && it.description == incoming.description
+        }?.id?.let { incoming.id to it }
+    }.toMap()
+    val replacedRecords = recordMap.values.toSet()
+    val photos = current.dietPhotos.filterNot {
+        it.mealRecordId in replacedRecords || it.templateId in replacedTemplates
+    }.toMutableList()
+    val usedPhotoIds = photos.mapTo(mutableSetOf(), BackupDietPhoto::id)
+    var nextPhotoId = (usedPhotoIds.maxOrNull() ?: 0L) + 1
+    imported.dietPhotos.forEach { incoming ->
+        val mealId = incoming.mealRecordId?.let(recordMap::get)
+        val templateId = incoming.templateId?.let(templateMap::get)
+        if ((mealId != null) == (templateId != null)) return@forEach
+        photos += incoming.copy(
+            id = availableId(incoming.id, usedPhotoIds) { nextPhotoId++ },
+            mealRecordId = mealId,
+            templateId = templateId,
+        )
+    }
+    return MergedQuickCapture(
+        photos = photos.sortedBy(BackupDietPhoto::id),
+        templates = templates.sortedBy(BackupDietTemplate::id),
+        foodItems = foodItems.sortedBy(BackupDietTemplateFoodItem::id),
+        toppings = toppings.sortedBy(BackupDietTemplateTopping::id),
+    )
 }
 
 private data class MergedDiet(

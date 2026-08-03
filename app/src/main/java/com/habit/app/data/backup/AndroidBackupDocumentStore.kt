@@ -59,6 +59,24 @@ class AndroidBackupDocumentStore(context: Context) : BackupDocumentStore {
         }
     }
 
+    override suspend fun writeStream(
+        folder: BackupFolder,
+        name: String,
+        mimeType: String,
+        writer: (java.io.OutputStream) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        require(isManagedBackupName(name)) { "无效的备份文件名" }
+        when (folder) {
+            BackupFolder.Default -> writeDefaultStream(name, mimeType, writer)
+            is BackupFolder.Tree -> {
+                val directory = tree(folder)
+                directory.findFile(name)?.delete()
+                val document = directory.createFile(mimeType, name) ?: error("无法在所选目录创建备份")
+                resolver.openOutputStream(document.uri, "wt")?.use(writer) ?: error("无法写入备份：$name")
+            }
+        }
+    }
+
     override suspend fun delete(folder: BackupFolder, name: String) = withContext(Dispatchers.IO) {
         when (folder) {
             BackupFolder.Default -> if (Build.VERSION.SDK_INT >= 29) {
@@ -115,6 +133,31 @@ class AndroidBackupDocumentStore(context: Context) : BackupDocumentStore {
             val file = defaultFile(name)
             file.parentFile?.mkdirs()
             file.writeBytes(bytes)
+        }
+    }
+
+    private fun writeDefaultStream(name: String, mimeType: String, writer: (java.io.OutputStream) -> Unit) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            findDefaultUri(name)?.let { uri -> resolver.delete(uri, null, null) }
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, DEFAULT_RELATIVE_PATH)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("无法创建默认备份文件")
+            try {
+                resolver.openOutputStream(uri, "wt")?.use(writer) ?: error("无法写入默认备份文件")
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            } catch (error: Exception) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+        } else {
+            val file = defaultFile(name)
+            file.parentFile?.mkdirs()
+            file.outputStream().use(writer)
         }
     }
 

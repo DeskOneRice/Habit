@@ -18,6 +18,10 @@ object HabitBackupCodec {
             put("foodItems", buildJsonArray { backup.foodItems.forEach { add(it.toJson()) } })
             put("beverageDetails", buildJsonArray { backup.beverageDetails.forEach { add(it.toJson()) } })
             put("beverageToppings", buildJsonArray { backup.beverageToppings.forEach { add(it.toJson()) } })
+            put("dietPhotos", buildJsonArray { backup.dietPhotos.forEach { add(it.toJson()) } })
+            put("dietTemplates", buildJsonArray { backup.dietTemplates.forEach { add(it.toJson()) } })
+            put("dietTemplateFoodItems", buildJsonArray { backup.dietTemplateFoodItems.forEach { add(it.toJson()) } })
+            put("dietTemplateToppings", buildJsonArray { backup.dietTemplateToppings.forEach { add(it.toJson()) } })
             put("preferences", backup.preferences.toJson())
         }.toString()
     }
@@ -46,6 +50,10 @@ object HabitBackupCodec {
                 foodItems = root.optionalArray("foodItems").map { it.jsonObject.toFoodItem() },
                 beverageDetails = root.optionalArray("beverageDetails").map { it.jsonObject.toBeverageDetail() },
                 beverageToppings = root.optionalArray("beverageToppings").map { it.jsonObject.toBeverageTopping() },
+                dietPhotos = root.optionalArray("dietPhotos").map { it.jsonObject.toDietPhoto() },
+                dietTemplates = root.optionalArray("dietTemplates").map { it.jsonObject.toDietTemplate() },
+                dietTemplateFoodItems = root.optionalArray("dietTemplateFoodItems").map { it.jsonObject.toDietTemplateFoodItem() },
+                dietTemplateToppings = root.optionalArray("dietTemplateToppings").map { it.jsonObject.toDietTemplateTopping() },
             )
         } catch (error: InvalidBackupException) { throw error }
         catch (error: Exception) { throw InvalidBackupException("备份字段无效", error) }
@@ -64,15 +72,30 @@ object HabitBackupCodec {
         requireUnique("饮食", backup.mealRecords.map { it.id })
         requireUnique("食物", backup.foodItems.map { it.id })
         requireUnique("加料", backup.beverageToppings.map { it.id })
+        requireUnique("饮食照片", backup.dietPhotos.map { it.id })
+        requireUnique("饮食模板", backup.dietTemplates.map { it.id })
+        requireUnique("模板食物", backup.dietTemplateFoodItems.map { it.id })
+        requireUnique("模板加料", backup.dietTemplateToppings.map { it.id })
         val categoryIds = backup.categories.mapTo(mutableSetOf()) { it.id }
         val habitIds = backup.habits.mapTo(mutableSetOf()) { it.id }
         val mealIds = backup.mealRecords.mapTo(mutableSetOf()) { it.id }
+        val templateIds = backup.dietTemplates.mapTo(mutableSetOf()) { it.id }
         if (backup.habits.any { it.categoryId !in categoryIds }) throw InvalidBackupException("习惯引用了不存在的分类")
         if (backup.checkIns.any { it.habitId !in habitIds }) throw InvalidBackupException("打卡引用了不存在的习惯")
         if (backup.foodItems.any { it.mealRecordId !in mealIds } ||
             backup.beverageDetails.any { it.mealRecordId !in mealIds } ||
             backup.beverageToppings.any { it.mealRecordId !in mealIds }
         ) throw InvalidBackupException("饮食子项引用了不存在的记录")
+        if (backup.dietTemplateFoodItems.any { it.templateId !in templateIds } ||
+            backup.dietTemplateToppings.any { it.templateId !in templateIds }
+        ) throw InvalidBackupException("模板子项引用了不存在的模板")
+        if (backup.dietPhotos.any {
+                (it.mealRecordId != null) == (it.templateId != null) ||
+                    (it.mealRecordId != null && it.mealRecordId !in mealIds) ||
+                    (it.templateId != null && it.templateId !in templateIds) ||
+                    it.relativePath.isBlank()
+            }
+        ) throw InvalidBackupException("饮食照片归属无效")
         if (backup.mealRecords.any { (it.calculatedCalories ?: 0) < 0 || (it.finalCalories ?: 0) < 0 }) {
             throw InvalidBackupException("饮食热量无效")
         }
@@ -117,6 +140,27 @@ private fun BackupBeverageTopping.toJson() = buildJsonObject {
     put("id", id); put("mealRecordId", mealRecordId); put("name", name); put("sortOrder", sortOrder)
     put("createdAt", createdAt); put("updatedAt", updatedAt)
 }
+private fun BackupDietPhoto.toJson() = buildJsonObject {
+    put("id", id); putNullable("mealRecordId", mealRecordId); putNullable("templateId", templateId)
+    put("relativePath", relativePath); put("sortOrder", sortOrder); put("createdAt", createdAt)
+}
+private fun BackupDietTemplate.toJson() = buildJsonObject {
+    put("id", id); put("name", name); put("recordType", recordType); putNullable("mealType", mealType)
+    put("description", description); putNullable("manualFinalCalories", manualFinalCalories)
+    putNullable("beverageCategory", beverageCategory); putNullable("brandOrStore", brandOrStore)
+    putNullable("beverageName", beverageName); putNullable("sizeOrVolume", sizeOrVolume)
+    putNullable("temperature", temperature); putNullable("iceLevel", iceLevel); putNullable("sweetness", sweetness)
+    putNullable("cupCount", cupCount); put("note", note); put("sortOrder", sortOrder)
+    put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun BackupDietTemplateFoodItem.toJson() = buildJsonObject {
+    put("id", id); put("templateId", templateId); put("name", name); putNullable("portionText", portionText)
+    putNullable("calories", calories); put("sortOrder", sortOrder); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun BackupDietTemplateTopping.toJson() = buildJsonObject {
+    put("id", id); put("templateId", templateId); put("name", name); put("sortOrder", sortOrder)
+    put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
 private fun BackupPreferences.toJson() = buildJsonObject {
     put("themeId", themeId)
     put("recentEmojiKeys", buildJsonArray { recentEmojiKeys.forEach { add(JsonPrimitive(it)) } })
@@ -130,6 +174,16 @@ private fun JsonObject.toMealRecord() = BackupMealRecord(requiredLong("id"), req
 private fun JsonObject.toFoodItem() = BackupFoodItem(requiredLong("id"), requiredLong("mealRecordId"), requiredString("name"), nullableString("portionText"), nullableInt("calories"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toBeverageDetail() = BackupBeverageDetail(requiredLong("mealRecordId"), requiredString("category"), requiredString("brandOrStore"), requiredString("beverageName"), requiredString("sizeOrVolume"), requiredString("temperature"), requiredString("iceLevel"), requiredString("sweetness"), requiredInt("cupCount"))
 private fun JsonObject.toBeverageTopping() = BackupBeverageTopping(requiredLong("id"), requiredLong("mealRecordId"), requiredString("name"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
+private fun JsonObject.toDietPhoto() = BackupDietPhoto(requiredLong("id"), nullableLong("mealRecordId"), nullableLong("templateId"), requiredString("relativePath"), requiredInt("sortOrder"), requiredLong("createdAt"))
+private fun JsonObject.toDietTemplate() = BackupDietTemplate(
+    requiredLong("id"), requiredString("name"), requiredString("recordType"), nullableString("mealType"),
+    requiredString("description"), nullableInt("manualFinalCalories"), nullableString("beverageCategory"),
+    nullableString("brandOrStore"), nullableString("beverageName"), nullableString("sizeOrVolume"),
+    nullableString("temperature"), nullableString("iceLevel"), nullableString("sweetness"), nullableInt("cupCount"),
+    requiredString("note"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"),
+)
+private fun JsonObject.toDietTemplateFoodItem() = BackupDietTemplateFoodItem(requiredLong("id"), requiredLong("templateId"), requiredString("name"), nullableString("portionText"), nullableInt("calories"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
+private fun JsonObject.toDietTemplateTopping() = BackupDietTemplateTopping(requiredLong("id"), requiredLong("templateId"), requiredString("name"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toPreferences(version: Int) = BackupPreferences(
     requiredString("themeId"), requiredArray("recentEmojiKeys").map { it.jsonPrimitive.content },
     if (version >= 2) optionalBoolean("dailyCalorieGoalEnabled") ?: false else false,

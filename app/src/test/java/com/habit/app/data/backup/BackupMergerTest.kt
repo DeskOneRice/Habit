@@ -40,6 +40,24 @@ class BackupMergerTest {
         assertEquals(importedHabit.id, result.checkIns.single().habitId)
     }
 
+    @Test
+    fun importedTemplateAndItsPhotoAreKeptDuringMerge() {
+        val current = backup(habit(7, "当前", 10, 20))
+        val template = BackupDietTemplate(
+            5, "咖啡", "BEVERAGE", null, "", 120, "COFFEE", "店", "拿铁",
+            "中杯", "热", "", "无糖", 1, "", 0, 30, 30,
+        )
+        val imported = backup(habit(8, "导入", 11, 21)).copy(
+            dietTemplates = listOf(template),
+            dietPhotos = listOf(BackupDietPhoto(9, null, 5, "library/coffee.jpg", 0, 30)),
+        )
+
+        val result = BackupMerger.merge(current, imported)
+
+        assertEquals("咖啡", result.dietTemplates.single().name)
+        assertEquals(result.dietTemplates.single().id, result.dietPhotos.single().templateId)
+    }
+
     private fun backup(
         habit: BackupHabit,
         checkIns: List<BackupCheckIn> = emptyList(),
