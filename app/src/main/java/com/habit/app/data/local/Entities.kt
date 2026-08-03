@@ -146,3 +146,99 @@ data class BeverageToppingEntity(
     val createdAt: Long,
     val updatedAt: Long,
 )
+
+@Entity(
+    tableName = "diet_templates",
+    indices = [Index("recordType"), Index("sortOrder")],
+)
+data class DietTemplateEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val recordType: String,
+    val mealType: String?,
+    val description: String,
+    val manualFinalCalories: Int?,
+    val beverageCategory: String?,
+    val brandOrStore: String?,
+    val beverageName: String?,
+    val sizeOrVolume: String?,
+    val temperature: String?,
+    val iceLevel: String?,
+    val sweetness: String?,
+    val cupCount: Int?,
+    val note: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "diet_template_food_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = DietTemplateEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["templateId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("templateId")],
+)
+data class DietTemplateFoodItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val templateId: Long,
+    val name: String,
+    val portionText: String?,
+    val calories: Int?,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "diet_template_toppings",
+    foreignKeys = [
+        ForeignKey(
+            entity = DietTemplateEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["templateId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("templateId")],
+)
+data class DietTemplateToppingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val templateId: Long,
+    val name: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "diet_photos",
+    foreignKeys = [
+        ForeignKey(
+            entity = MealRecordEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["mealRecordId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = DietTemplateEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["templateId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("mealRecordId"), Index("templateId"), Index(value = ["relativePath"], unique = true)],
+)
+data class DietPhotoEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val mealRecordId: Long?,
+    val templateId: Long?,
+    val relativePath: String,
+    val sortOrder: Int,
+    val createdAt: Long,
+)

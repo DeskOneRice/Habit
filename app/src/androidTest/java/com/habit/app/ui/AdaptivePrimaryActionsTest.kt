@@ -34,7 +34,7 @@ class AdaptivePrimaryActionsTest {
     @Test
     fun welcomePrimaryActionRemainsReachableOnShort360DpScreenAt130PercentFontScale() {
         setShortScreenContent {
-            WelcomeScreen(onCreateHabit = {})
+            WelcomeScreen(onCreateHabit = {}, onSkip = {})
         }
 
         composeRule.onNodeWithTag("welcome_create")

@@ -2,9 +2,14 @@ package com.habit.app.ui.diet
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.net.Uri
+import com.habit.app.data.photos.CameraPhotoTarget
+import com.habit.app.data.photos.DietPhotoStore
 import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
 import com.habit.app.domain.model.DietRecordType
+import com.habit.app.domain.model.DietPhoto
+import com.habit.app.data.photos.MAX_DIET_PHOTOS
 import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
@@ -42,9 +47,22 @@ data class DietEditorUiState(
     val toppings: String = "",
     val cupCountText: String = "1",
     val note: String = "",
+    val photos: List<DietPhoto> = emptyList(),
     val isSaving: Boolean = false,
     val message: String? = null,
 )
+
+val DietEditorUiState.canAddPhoto: Boolean get() = photos.size < MAX_DIET_PHOTOS
+
+internal fun DietEditorUiState.withAddedPhotos(newPhotos: List<DietPhoto>): DietEditorUiState {
+    if (photos.size + newPhotos.size > MAX_DIET_PHOTOS) {
+        return copy(message = "每条记录最多添加 3 张照片")
+    }
+    return copy(
+        photos = (photos + newPhotos).mapIndexed { index, photo -> photo.copy(sortOrder = index) },
+        message = null,
+    )
+}
 
 internal fun DietEditorUiState.withDate(value: LocalDate) = copy(date = value)
 
@@ -57,6 +75,7 @@ class DietEditorViewModel(
     private val repository: DietRepository,
     private val dateProvider: DeviceDateProvider,
     private val clock: Clock = Clock.systemUTC(),
+    private val photoStore: DietPhotoStore? = null,
 ) : ViewModel() {
     private val now = Instant.now(clock).atZone(dateProvider.zoneId)
     private val mutableState = MutableStateFlow(
@@ -91,6 +110,7 @@ class DietEditorViewModel(
                     toppings = drink?.toppings?.joinToString("、").orEmpty(),
                     cupCountText = drink?.cupCount?.toString() ?: "1",
                     note = record.note,
+                    photos = record.photos,
                 )
             }
         }
@@ -107,12 +127,80 @@ class DietEditorViewModel(
         })
     }
     fun removeFood(index: Int) = update { copy(foodItems = foodItems.filterIndexed { current, _ -> current != index }) }
+    fun addPhotos(photos: List<DietPhoto>) { mutableState.value = mutableState.value.withAddedPhotos(photos) }
+    fun removePhoto(index: Int) = update {
+        copy(photos = photos.filterIndexed { current, _ -> current != index }.mapIndexed { order, photo -> photo.copy(sortOrder = order) })
+    }
+
+    fun importPhotos(uris: List<Uri>) {
+        val store = photoStore ?: return
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val accepted = mutableListOf<DietPhoto>()
+            try {
+                val available = MAX_DIET_PHOTOS - mutableState.value.photos.size
+                if (uris.size > available) {
+                    mutableState.value = mutableState.value.copy(message = "每条记录最多添加 3 张照片")
+                    return@launch
+                }
+                uris.forEach { accepted += store.stage(it) }
+                mutableState.value = mutableState.value.withAddedPhotos(accepted)
+            } catch (cancelled: CancellationException) {
+                accepted.forEach { store.discard(it.relativePath) }
+                throw cancelled
+            } catch (error: Exception) {
+                accepted.forEach { store.discard(it.relativePath) }
+                mutableState.value = mutableState.value.copy(message = error.message ?: "照片读取失败")
+            }
+        }
+    }
+
+    fun createCameraTarget(): CameraPhotoTarget? = try {
+        photoStore?.takeIf { mutableState.value.canAddPhoto }?.createCameraTarget()
+    } catch (error: Exception) {
+        mutableState.value = mutableState.value.copy(message = error.message ?: "无法打开相机")
+        null
+    }
+
+    fun photoFile(relativePath: String) = photoStore?.file(relativePath)
+
+    fun acceptCameraTarget(target: CameraPhotoTarget, success: Boolean) {
+        val store = photoStore ?: return
+        viewModelScope.launch {
+            if (!success) {
+                store.discard(target.photo.relativePath)
+                return@launch
+            }
+            try {
+                val photo = store.acceptCameraTarget(target)
+                mutableState.value = mutableState.value.withAddedPhotos(listOf(photo))
+            } catch (error: Exception) {
+                store.discard(target.photo.relativePath)
+                mutableState.value = mutableState.value.copy(message = error.message ?: "照片读取失败")
+            }
+        }
+    }
+
+    fun cancel(onCancelled: () -> Unit) {
+        val store = photoStore
+        if (store == null) {
+            onCancelled()
+            return
+        }
+        viewModelScope.launch {
+            mutableState.value.photos
+                .filter { it.relativePath.startsWith("staging/") }
+                .forEach { store.discard(it.relativePath) }
+            onCancelled()
+        }
+    }
 
     fun save(onSaved: () -> Unit) {
         viewModelScope.launch {
             mutableState.value = mutableState.value.copy(isSaving = true, message = null)
             try {
                 val current = mutableState.value
+                val committedPhotos = photoStore?.commit(current.photos) ?: current.photos
                 val occurredAt = current.date.atTime(current.time).atZone(dateProvider.zoneId).toInstant().toEpochMilli()
                 val manual = current.finalCaloriesText.toIntOrNull()
                 calculateCalories(current.foodItems, manual)
@@ -139,8 +227,10 @@ class DietEditorViewModel(
                         manual,
                         beverage,
                         current.note,
+                        committedPhotos,
                     ),
                 )
+                photoStore?.removeOrphans(repository.referencedPhotoPaths())
                 onSaved()
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -156,6 +246,7 @@ class DietEditorViewModel(
         val id = recordId ?: return
         viewModelScope.launch {
             repository.delete(id)
+            photoStore?.removeOrphans(repository.referencedPhotoPaths())
             onDeleted()
         }
     }

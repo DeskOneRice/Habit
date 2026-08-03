@@ -17,6 +17,18 @@ data class MealRecordWithDetails(
     val beverageDetails: BeverageDetailEntity?,
     @Relation(parentColumn = "id", entityColumn = "mealRecordId")
     val toppings: List<BeverageToppingEntity>,
+    @Relation(parentColumn = "id", entityColumn = "mealRecordId")
+    val photos: List<DietPhotoEntity>,
+)
+
+data class DietTemplateWithDetails(
+    @Embedded val template: DietTemplateEntity,
+    @Relation(parentColumn = "id", entityColumn = "templateId")
+    val foodItems: List<DietTemplateFoodItemEntity>,
+    @Relation(parentColumn = "id", entityColumn = "templateId")
+    val toppings: List<DietTemplateToppingEntity>,
+    @Relation(parentColumn = "id", entityColumn = "templateId")
+    val photos: List<DietPhotoEntity>,
 )
 
 @Dao
@@ -60,6 +72,54 @@ interface DietDao {
 
     @Insert
     suspend fun insertToppings(items: List<BeverageToppingEntity>)
+
+    @Insert
+    suspend fun insertPhotos(items: List<DietPhotoEntity>)
+
+    @Query("DELETE FROM diet_photos WHERE mealRecordId = :recordId")
+    suspend fun deleteRecordPhotos(recordId: Long)
+
+    @Query("SELECT relativePath FROM diet_photos")
+    suspend fun getAllPhotoPaths(): List<String>
+
+    @Transaction
+    @Query("SELECT * FROM diet_templates ORDER BY recordType, sortOrder, id")
+    fun observeTemplates(): Flow<List<DietTemplateWithDetails>>
+
+    @Transaction
+    @Query("SELECT * FROM diet_templates WHERE id = :id")
+    suspend fun getTemplate(id: Long): DietTemplateWithDetails?
+
+    @Transaction
+    @Query("SELECT * FROM diet_templates ORDER BY id")
+    suspend fun getAllTemplates(): List<DietTemplateWithDetails>
+
+    @Insert
+    suspend fun insertTemplate(template: DietTemplateEntity): Long
+
+    @Update
+    suspend fun updateTemplate(template: DietTemplateEntity): Int
+
+    @Insert
+    suspend fun insertTemplateFoodItems(items: List<DietTemplateFoodItemEntity>)
+
+    @Insert
+    suspend fun insertTemplateToppings(items: List<DietTemplateToppingEntity>)
+
+    @Query("DELETE FROM diet_template_food_items WHERE templateId = :templateId")
+    suspend fun deleteTemplateFoodItems(templateId: Long)
+
+    @Query("DELETE FROM diet_template_toppings WHERE templateId = :templateId")
+    suspend fun deleteTemplateToppings(templateId: Long)
+
+    @Query("DELETE FROM diet_photos WHERE templateId = :templateId")
+    suspend fun deleteTemplatePhotos(templateId: Long)
+
+    @Query("DELETE FROM diet_templates WHERE id = :templateId")
+    suspend fun deleteTemplate(templateId: Long): Int
+
+    @Query("DELETE FROM diet_templates")
+    suspend fun deleteAllTemplates(): Int
 
     @Query("DELETE FROM food_items WHERE mealRecordId = :recordId")
     suspend fun deleteFoodItems(recordId: Long)

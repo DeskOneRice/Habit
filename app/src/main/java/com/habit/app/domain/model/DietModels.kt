@@ -47,6 +47,7 @@ data class MealRecordDraft(
     val manualFinalCalories: Int?,
     val beverage: BeverageDetails?,
     val note: String,
+    val photos: List<DietPhoto> = emptyList(),
 )
 
 data class MealRecord(
@@ -64,6 +65,46 @@ data class MealRecord(
     val note: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val photos: List<DietPhoto> = emptyList(),
+)
+
+data class DietPhoto(
+    val id: Long = 0,
+    val relativePath: String,
+    val sortOrder: Int,
+)
+
+data class DietTemplate(
+    val id: Long,
+    val name: String,
+    val draft: MealRecordDraft,
+    val photos: List<DietPhoto>,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class DietTemplateDraft(
+    val id: Long? = null,
+    val name: String,
+    val meal: MealRecordDraft,
+    val includePhotos: Boolean = false,
+    val sortOrder: Int = 0,
+)
+
+fun MealRecord.toRepeatDraft(nowMillis: Long, epochDay: Long): MealRecordDraft = MealRecordDraft(
+    recordType = recordType,
+    mealType = mealType,
+    occurredAt = nowMillis,
+    recordEpochDay = epochDay,
+    description = description,
+    foodItems = foodItems.sortedBy(FoodItem::sortOrder).map {
+        FoodItemDraft(it.name, it.portionText, it.calories)
+    },
+    manualFinalCalories = finalCalories,
+    beverage = beverage,
+    note = note,
+    photos = emptyList(),
 )
 
 data class CalorieCalculation(

@@ -298,7 +298,12 @@ private class DietEditorFactory(
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        DietEditorViewModel(recordId, container.dietRepository, container.dateProvider) as T
+        DietEditorViewModel(
+            recordId,
+            container.dietRepository,
+            container.dateProvider,
+            photoStore = container.dietPhotoStore,
+        ) as T
 }
 
 private class DietStatsFactory(private val container: AppContainer) : ViewModelProvider.Factory {

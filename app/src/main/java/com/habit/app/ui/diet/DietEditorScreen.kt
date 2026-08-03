@@ -1,13 +1,24 @@
 package com.habit.app.ui.diet
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import android.graphics.BitmapFactory
+import com.habit.app.data.photos.CameraPhotoTarget
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.DietRecordType
@@ -31,9 +42,19 @@ fun DietEditorScreen(
     var showDelete by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showPhotoSource by remember { mutableStateOf(false) }
+    var cameraTarget by remember { mutableStateOf<CameraPhotoTarget?>(null) }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
+        viewModel.importPhotos(it)
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        cameraTarget?.let { viewModel.acceptCameraTarget(it, success) }
+        cameraTarget = null
+    }
+    BackHandler { viewModel.cancel(onBack) }
     Scaffold(
         topBar = {
-            HabitTopAppBar(if (isEditing) "编辑饮食" else "记一餐", NavigationMode.BACK, onBack) {
+            HabitTopAppBar(if (isEditing) "编辑饮食" else "记一餐", NavigationMode.BACK, { viewModel.cancel(onBack) }) {
                 if (isEditing) TextButton(onClick = { showDelete = true }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -66,6 +87,27 @@ fun DietEditorScreen(
                 ) { Text(state.time.format(DateTimeFormatter.ofPattern("HH:mm"))) }
             }
             if (state.recordType == DietRecordType.MEAL) MealFields(state, viewModel) else BeverageFields(state, viewModel)
+            Text("照片（最多 3 张）", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                state.photos.forEachIndexed { index, photo ->
+                    DietPhotoThumbnail(
+                        path = viewModel.photoFile(photo.relativePath)?.path,
+                        onRemove = { viewModel.removePhoto(index) },
+                    )
+                }
+                if (state.canAddPhoto) {
+                    OutlinedButton(
+                        onClick = { showPhotoSource = true },
+                        modifier = Modifier.size(92.dp).testTag("diet_add_photo"),
+                        contentPadding = PaddingValues(6.dp),
+                    ) {
+                        Text("📷\n添加", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            }
             OutlinedTextField(
                 value = state.finalCaloriesText,
                 onValueChange = { value -> viewModel.update { copy(finalCaloriesText = value.filter(Char::isDigit)) } },
@@ -130,6 +172,62 @@ fun DietEditorScreen(
             },
             dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } },
         )
+    }
+    if (showPhotoSource) {
+        AlertDialog(
+            onDismissRequest = { showPhotoSource = false },
+            title = { Text("添加照片") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            showPhotoSource = false
+                            galleryLauncher.launch("image/*")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("🖼️ 从相册选择") }
+                    OutlinedButton(
+                        onClick = {
+                            showPhotoSource = false
+                            viewModel.createCameraTarget()?.let {
+                                cameraTarget = it
+                                cameraLauncher.launch(it.contentUri)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("📷 拍照") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showPhotoSource = false }) { Text("取消") } },
+        )
+    }
+}
+
+@Composable
+private fun DietPhotoThumbnail(path: String?, onRemove: () -> Unit) {
+    val bitmap = remember(path) {
+        path?.let {
+            BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = 4 })
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(92.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = "饮食照片",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        FilledTonalIconButton(
+            onClick = onRemove,
+            modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
+        ) { Text("×") }
     }
 }
 

@@ -10,4 +10,5 @@ interface DietRepository {
     fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<MealRecord>>
     suspend fun save(id: Long?, draft: MealRecordDraft): Long
     suspend fun delete(id: Long)
+    suspend fun referencedPhotoPaths(): Set<String> = emptySet()
 }

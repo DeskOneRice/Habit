@@ -7,6 +7,10 @@ import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
 import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRecordType
+import com.habit.app.domain.model.DietPhoto
+import com.habit.app.domain.model.DietTemplate
+import com.habit.app.domain.model.FoodItemDraft
+import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.FoodItem
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealType
@@ -102,4 +106,49 @@ fun MealRecordWithDetails.toDomain(): MealRecord = MealRecord(
     note = record.note,
     createdAt = record.createdAt,
     updatedAt = record.updatedAt,
+    photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
+        DietPhoto(it.id, it.relativePath, it.sortOrder)
+    },
 )
+
+fun DietTemplateWithDetails.toDomain(): DietTemplate {
+    val beverage = template.beverageCategory?.let {
+        BeverageDetails(
+            category = BeverageCategory.valueOf(it),
+            brandOrStore = template.brandOrStore.orEmpty(),
+            beverageName = template.beverageName.orEmpty(),
+            sizeOrVolume = template.sizeOrVolume.orEmpty(),
+            temperature = template.temperature.orEmpty(),
+            iceLevel = template.iceLevel.orEmpty(),
+            sweetness = template.sweetness.orEmpty(),
+            toppings = toppings.sortedBy(DietTemplateToppingEntity::sortOrder).map(DietTemplateToppingEntity::name),
+            cupCount = template.cupCount ?: 1,
+        )
+    }
+    return DietTemplate(
+        id = template.id,
+        name = template.name,
+        draft = MealRecordDraft(
+            recordType = DietRecordType.valueOf(template.recordType),
+            mealType = template.mealType?.let(MealType::valueOf),
+            occurredAt = 0,
+            recordEpochDay = 0,
+            description = template.description,
+            foodItems = foodItems.sortedBy(DietTemplateFoodItemEntity::sortOrder).map {
+                FoodItemDraft(it.name, it.portionText, it.calories)
+            },
+            manualFinalCalories = template.manualFinalCalories,
+            beverage = beverage,
+            note = template.note,
+            photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
+                DietPhoto(it.id, it.relativePath, it.sortOrder)
+            },
+        ),
+        photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
+            DietPhoto(it.id, it.relativePath, it.sortOrder)
+        },
+        sortOrder = template.sortOrder,
+        createdAt = template.createdAt,
+        updatedAt = template.updatedAt,
+    )
+}

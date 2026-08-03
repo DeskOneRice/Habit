@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.habit.app.data.local.BeverageDetailEntity
 import com.habit.app.data.local.BeverageToppingEntity
 import com.habit.app.data.local.FoodItemEntity
+import com.habit.app.data.local.DietPhotoEntity
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.MealRecordEntity
 import com.habit.app.data.local.toDomain
@@ -57,6 +58,7 @@ class RoomDietRepository(
         dao.deleteFoodItems(recordId)
         dao.deleteBeverage(recordId)
         dao.deleteToppings(recordId)
+        dao.deleteRecordPhotos(recordId)
         dao.insertFoodItems(normalized.foodItems.mapIndexed { index, item ->
             FoodItemEntity(
                 mealRecordId = recordId,
@@ -92,6 +94,15 @@ class RoomDietRepository(
                 )
             })
         }
+        dao.insertPhotos(normalized.photos.mapIndexed { index, photo ->
+            DietPhotoEntity(
+                mealRecordId = recordId,
+                templateId = null,
+                relativePath = photo.relativePath,
+                sortOrder = index,
+                createdAt = now,
+            )
+        })
         recordId
     }
 
@@ -99,7 +110,10 @@ class RoomDietRepository(
         dao.deleteRecord(id)
     }
 
+    override suspend fun referencedPhotoPaths(): Set<String> = dao.getAllPhotoPaths().toSet()
+
     private fun validate(draft: MealRecordDraft): MealRecordDraft {
+        require(draft.photos.size <= 3) { "每条记录最多添加 3 张照片" }
         require(draft.manualFinalCalories == null || draft.manualFinalCalories >= 0) { "热量不能小于 0" }
         val foods = draft.foodItems
             .map { it.copy(name = it.name.trim(), portionText = it.portionText?.trim()) }
