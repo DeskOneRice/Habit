@@ -157,7 +157,14 @@ fun normalizeEmojiKey(raw: String): String? {
 fun isSingleEmoji(raw: String): Boolean {
     val value = raw.trim()
     if (value.isEmpty()) return false
-    val codePoints = value.codePoints().toArray().toList()
+    val codePoints = buildList {
+        var index = 0
+        while (index < value.length) {
+            val codePoint = Character.codePointAt(value, index)
+            add(codePoint)
+            index += Character.charCount(codePoint)
+        }
+    }
 
     val first = codePoints.firstOrNull()
     val isKeycap = codePoints.lastOrNull() == 0x20E3 &&
