@@ -13,7 +13,7 @@ interface DeviceDateProvider {
     fun today(): LocalDate
 
     val zoneId: ZoneId
-        get() = ZoneId.systemDefault()
+        get() = HabitTimePolicy.zoneId
 
     fun snapshot(): DeviceDateSnapshot = DeviceDateSnapshot(today(), zoneId)
 }
@@ -22,7 +22,7 @@ class SystemDeviceDateProvider(
     private val clock: Clock = Clock.systemUTC(),
 ) : DeviceDateProvider {
     override fun snapshot(): DeviceDateSnapshot {
-        val currentZone = ZoneId.systemDefault()
+        val currentZone = HabitTimePolicy.zoneId
         return DeviceDateSnapshot(
             today = clock.instant().atZone(currentZone).toLocalDate(),
             zoneId = currentZone,

@@ -9,9 +9,9 @@ import com.habit.app.data.preferences.BackupPreferencesRepository
 import com.habit.app.data.preferences.DEFAULT_BACKUP_LABEL
 import com.habit.app.data.preferences.TimestampedBackupPreferences
 import com.habit.app.data.preferences.choosePreferences
+import com.habit.app.domain.time.HabitTimePolicy
 import java.time.Clock
 import java.time.Instant
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -86,7 +86,7 @@ class HabitBackupService(
             beverageToppings = database.beverageToppings,
             preferences = preferenceSnapshot.content.preferences,
         )
-        val fileName = "Habit-Backup-${FILE_TIME_FORMAT.format(Instant.ofEpochMilli(now))}.habitbackup.json"
+        val fileName = backupFileName(now)
         documentStore.write(
             preferenceSnapshot.folder,
             fileName,
@@ -142,9 +142,11 @@ class HabitBackupService(
         }
     }
 
-    private companion object {
-        val FILE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter
-            .ofPattern("yyyyMMdd-HHmmss")
-            .withZone(ZoneOffset.UTC)
-    }
 }
+
+internal fun backupFileName(epochMillis: Long): String =
+    "Habit-Backup-${BACKUP_FILE_TIME_FORMAT.format(Instant.ofEpochMilli(epochMillis))}.habitbackup.json"
+
+private val BACKUP_FILE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter
+    .ofPattern("yyyyMMdd-HHmmss")
+    .withZone(HabitTimePolicy.zoneId)

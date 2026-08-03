@@ -29,8 +29,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.data.backup.ImportMode
-import java.text.DateFormat
-import java.util.Date
+import com.habit.app.domain.time.HabitTimePolicy
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
@@ -173,5 +175,8 @@ fun SettingsScreen(
     }
 }
 
-private fun formatBackupTime(epochMillis: Long): String =
-    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(epochMillis))
+internal fun formatBackupTime(epochMillis: Long): String =
+    Instant.ofEpochMilli(epochMillis).atZone(HabitTimePolicy.zoneId).format(BACKUP_TIME_FORMAT) + "（北京时间）"
+
+private val BACKUP_TIME_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.CHINA)
