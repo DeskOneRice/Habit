@@ -1,4 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+val habitLocalProperties = Properties().apply {
+    rootProject.file("local.properties").inputStream().use(::load)
+}
+val habitSigningStoreFile = requireNotNull(habitLocalProperties.getProperty("habit.signing.storeFile")) {
+    "Missing habit.signing.storeFile in local.properties"
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -14,14 +22,27 @@ android {
         applicationId = "com.habit.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.3.1"
+        versionCode = 7
+        versionName = "0.3.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("habitStable") {
+            storeFile = file(habitSigningStoreFile)
+            storePassword = requireNotNull(habitLocalProperties.getProperty("habit.signing.storePassword"))
+            keyAlias = requireNotNull(habitLocalProperties.getProperty("habit.signing.keyAlias"))
+            keyPassword = requireNotNull(habitLocalProperties.getProperty("habit.signing.keyPassword"))
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("habitStable")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("habitStable")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
