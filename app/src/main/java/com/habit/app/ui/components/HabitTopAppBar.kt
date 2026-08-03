@@ -1,6 +1,8 @@
 package com.habit.app.ui.components
 
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -32,10 +34,12 @@ fun HabitTopAppBar(
                 onClick = onNavigation,
                 modifier = Modifier
                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .offset(x = (-4).dp)
                     .semantics { contentDescription = description }
                     .testTag(if (navigationMode == NavigationMode.MENU) "open_drawer" else "navigate_back"),
+                contentPadding = PaddingValues(0.dp),
             ) {
-                Text(if (navigationMode == NavigationMode.MENU) "☰" else "‹")
+                Text(if (navigationMode == NavigationMode.MENU) "☰" else "←")
             }
         },
         actions = actions,

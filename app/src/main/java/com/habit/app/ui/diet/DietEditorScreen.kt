@@ -14,8 +14,12 @@ import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealType
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
+import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DietEditorScreen(
     viewModel: DietEditorViewModel,
@@ -25,6 +29,8 @@ fun DietEditorScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             HabitTopAppBar(if (isEditing) "编辑饮食" else "记一餐", NavigationMode.BACK, onBack) {
@@ -36,15 +42,28 @@ fun DietEditorScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp).testTag("diet_editor"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(state.recordType == DietRecordType.MEAL, { viewModel.update { copy(recordType = DietRecordType.MEAL) } }, { Text("正餐 / 加餐") })
-                FilterChip(state.recordType == DietRecordType.BEVERAGE, { viewModel.update { copy(recordType = DietRecordType.BEVERAGE) } }, { Text("饮品") })
+            if (isEditing) {
+                AssistChip(
+                    onClick = {},
+                    enabled = false,
+                    label = { Text(if (state.recordType == DietRecordType.MEAL) "正餐 / 加餐" else "饮品") },
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(state.recordType == DietRecordType.MEAL, { viewModel.update { copy(recordType = DietRecordType.MEAL) } }, { Text("正餐 / 加餐") })
+                    FilterChip(state.recordType == DietRecordType.BEVERAGE, { viewModel.update { copy(recordType = DietRecordType.BEVERAGE) } }, { Text("饮品") })
+                }
             }
-            Text("${state.date}  ·  ${state.time}", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { viewModel.update { copy(date = date.minusDays(1)) } }) { Text("前一天") }
-                TextButton(onClick = { viewModel.update { copy(date = date.plusDays(1)) } }) { Text("后一天") }
-                TextButton(onClick = { viewModel.update { copy(time = LocalTime.now().withSecond(0).withNano(0)) } }) { Text("当前时间") }
+            Text("发生时间", style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.weight(1f).testTag("diet_choose_date"),
+                ) { Text(state.date.format(DateTimeFormatter.ofPattern("yyyy年M月d日"))) }
+                OutlinedButton(
+                    onClick = { showTimePicker = true },
+                    modifier = Modifier.weight(1f).testTag("diet_choose_time"),
+                ) { Text(state.time.format(DateTimeFormatter.ofPattern("HH:mm"))) }
             }
             if (state.recordType == DietRecordType.MEAL) MealFields(state, viewModel) else BeverageFields(state, viewModel)
             OutlinedTextField(
@@ -75,6 +94,43 @@ fun DietEditorScreen(
         confirmButton = { TextButton(onClick = { viewModel.delete(onBack) }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { showDelete = false }) { Text("取消") } },
     )
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        viewModel.update { withDate(selected) }
+                    }
+                    showDatePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("取消") } },
+        ) { DatePicker(state = pickerState) }
+    }
+    if (showTimePicker) {
+        val pickerState = rememberTimePickerState(
+            initialHour = state.time.hour,
+            initialMinute = state.time.minute,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("选择时间") },
+            text = { TimePicker(state = pickerState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.update { withTime(LocalTime.of(pickerState.hour, pickerState.minute)) }
+                    showTimePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } },
+        )
+    }
 }
 
 @Composable

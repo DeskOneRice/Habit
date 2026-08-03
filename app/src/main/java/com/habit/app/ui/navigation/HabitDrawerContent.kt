@@ -59,17 +59,17 @@ fun HabitDrawerContent(
         Spacer(Modifier.height(20.dp))
         HorizontalDivider()
         Spacer(Modifier.height(12.dp))
-        DrawerItem(DrawerDestination(HabitDestination.Workbench, "今日工作台", "⌂"), selectedRoute, onDestination)
-        DrawerGroupHeader("习惯", "✓", habitExpanded, onToggleHabit)
+        DrawerItem(DrawerDestination(HabitDestination.Workbench, "今日工作台", "🏠"), selectedRoute, onDestination)
+        DrawerGroupHeader("习惯", "🌱", habitExpanded, onToggleHabit)
         if (habitExpanded) habitDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }
-        DrawerGroupHeader("饮食", "☕", dietExpanded, onToggleDiet)
+        DrawerGroupHeader("饮食", "🍽️", dietExpanded, onToggleDiet)
         if (dietExpanded) dietDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }
         Spacer(Modifier.height(4.dp))
-        DrawerItem(DrawerDestination(HabitDestination.Settings, "主题与设置", "⚙"), selectedRoute, onDestination)
+        DrawerItem(DrawerDestination(HabitDestination.Settings, "主题与设置", "🎨"), selectedRoute, onDestination)
     }
 }
 
@@ -89,11 +89,11 @@ private fun DrawerItem(
     onDestination: (HabitDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-            NavigationDrawerItem(
-                label = { Text(item.label) },
-                icon = { Text(item.symbol) },
-                selected = selectedRoute == item.destination.route,
-                onClick = { onDestination(item.destination) },
+    NavigationDrawerItem(
+        label = { Text(item.label) },
+        icon = { Text(item.symbol) },
+        selected = selectedRoute == item.destination.route,
+        onClick = { onDestination(item.destination) },
         modifier = modifier.testTag("drawer_${item.destination.route}"),
-            )
+    )
 }

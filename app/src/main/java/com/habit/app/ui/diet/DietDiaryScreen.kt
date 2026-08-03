@@ -1,16 +1,16 @@
 package com.habit.app.ui.diet
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.DietRecordType
@@ -42,18 +42,25 @@ fun DietDiaryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+                Row(Modifier.fillMaxWidth()) {
                     repeat(7) { offset ->
                         val date = weekStart.plusDays(offset.toLong())
-                        FilterChip(
-                            selected = date == state.selectedDate,
+                        val selected = date == state.selectedDate
+                        Surface(
                             onClick = { viewModel.selectDate(date) },
-                            label = { Text("${date.dayOfWeek.displayName()}\n${date.dayOfMonth}") },
-                            modifier = Modifier.testTag("diet_day_${date.toEpochDay()}"),
-                        )
+                            modifier = Modifier.weight(1f).padding(horizontal = 2.dp).testTag("diet_day_${date.toEpochDay()}"),
+                            shape = MaterialTheme.shapes.large,
+                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(date.dayOfWeek.displayName(), style = MaterialTheme.typography.labelMedium)
+                                Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
                     }
                 }
             }
@@ -73,7 +80,12 @@ fun DietDiaryScreen(
             if (!state.isLoading && state.records.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
-                        Text("今天还没有记录\n点右下角开始记一餐", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "今天还没有记录\n点右下角开始记一餐",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 }
             }
