@@ -46,6 +46,12 @@ data class DietEditorUiState(
     val message: String? = null,
 )
 
+internal fun DietEditorUiState.withDate(value: LocalDate) = copy(date = value)
+
+internal fun DietEditorUiState.withTime(value: LocalTime) = copy(
+    time = value.withSecond(0).withNano(0),
+)
+
 class DietEditorViewModel(
     private val recordId: Long?,
     private val repository: DietRepository,
