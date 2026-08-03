@@ -15,6 +15,7 @@ internal val dailyCalorieGoalEnabledKey = booleanPreferencesKey("diet_daily_goal
 internal val dailyCalorieGoalKcalKey = intPreferencesKey("diet_daily_goal_kcal")
 internal val habitGroupExpandedKey = booleanPreferencesKey("drawer_habit_group_expanded")
 internal val dietGroupExpandedKey = booleanPreferencesKey("drawer_diet_group_expanded")
+internal val onboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
 
 internal fun encodeRecent(values: List<String>): String = values.distinct().take(12).joinToString(RECENT_SEPARATOR)
 

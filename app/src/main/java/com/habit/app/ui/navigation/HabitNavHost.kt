@@ -1,6 +1,7 @@
 package com.habit.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -33,6 +34,7 @@ import com.habit.app.ui.diet.DietStatsViewModel
 import com.habit.app.ui.welcome.WelcomeScreen
 import com.habit.app.ui.workbench.WorkbenchScreen
 import com.habit.app.ui.workbench.WorkbenchViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun HabitNavHost(
@@ -42,11 +44,18 @@ fun HabitNavHost(
     workbenchViewModel: WorkbenchViewModel,
     onOpenDrawer: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     NavHost(navController, startDestination.route) {
         composable(HabitDestination.Welcome.route) {
-            WelcomeScreen {
-                navController.navigate(HabitDestination.HabitEditor.route())
-            }
+            WelcomeScreen(
+                onCreateHabit = { navController.navigate(HabitDestination.HabitEditor.route()) },
+                onSkip = {
+                    scope.launch {
+                        container.onboardingPreferencesRepository.complete()
+                        navController.completeOnboarding()
+                    }
+                },
+            )
         }
         composable(HabitDestination.Workbench.route) {
             WorkbenchScreen(
@@ -103,7 +112,10 @@ fun HabitNavHost(
                                 ?.destination
                                 ?.route == HabitDestination.Welcome.route
                         ) {
-                            navController.completeOnboarding()
+                            scope.launch {
+                                container.onboardingPreferencesRepository.complete()
+                                navController.completeOnboarding()
+                            }
                         } else {
                             navController.popBackStack()
                         }

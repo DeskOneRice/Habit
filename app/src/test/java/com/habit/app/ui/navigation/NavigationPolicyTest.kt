@@ -11,13 +11,24 @@ class NavigationPolicyTest {
     fun existingUsersStartAtWorkbench() {
         assertEquals(
             FirstRunDestination.Workbench,
-            firstRunDestinationFor(listOf(testHabit())),
+            firstRunDestinationFor(listOf(testHabit()), onboardingCompleted = false),
         )
     }
 
     @Test
     fun newUsersStillSeeWelcome() {
-        assertEquals(FirstRunDestination.Welcome, firstRunDestinationFor(emptyList()))
+        assertEquals(
+            FirstRunDestination.Welcome,
+            firstRunDestinationFor(emptyList(), onboardingCompleted = false),
+        )
+    }
+
+    @Test
+    fun skippedUsersStartAtWorkbenchWithoutHabits() {
+        assertEquals(
+            FirstRunDestination.Workbench,
+            firstRunDestinationFor(emptyList(), onboardingCompleted = true),
+        )
     }
 
     @Test

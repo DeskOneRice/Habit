@@ -133,6 +133,9 @@ private class WelcomeViewModelFactory(
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(WelcomeViewModel::class.java))
-        return WelcomeViewModel(container.habitRepository) as T
+        return WelcomeViewModel(
+            container.habitRepository,
+            container.onboardingPreferencesRepository,
+        ) as T
     }
 }

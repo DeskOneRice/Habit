@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun WelcomeScreen(onCreateHabit: () -> Unit) {
+fun WelcomeScreen(
+    onCreateHabit: () -> Unit,
+    onSkip: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -65,7 +69,13 @@ fun WelcomeScreen(onCreateHabit: () -> Unit) {
         ) {
             Text("创建我的第一个习惯")
         }
-        Spacer(Modifier.height(16.dp))
+        TextButton(
+            onClick = onSkip,
+            modifier = Modifier.testTag("welcome_skip"),
+        ) {
+            Text("暂时跳过")
+        }
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "数据仅保存在你的手机上",
             style = MaterialTheme.typography.bodySmall,
