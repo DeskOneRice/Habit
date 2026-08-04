@@ -55,4 +55,55 @@ class HabitDatabaseMigrationTest {
         assertNotNull(sqlite.query("SELECT * FROM diet_photos"))
         database.close()
     }
+
+    @Test
+    fun migrateThreeToFourPreservesDietDataAndMapsCategories() {
+        helper.createDatabase(databaseName, 3).apply {
+            execSQL(
+                "INSERT INTO meal_records (id,recordType,mealType,occurredAt,recordEpochDay,description,calculatedCalories,finalCalories,calorieSource,note,createdAt,updatedAt) VALUES (1,'MEAL','DINNER',1000,1,'旧版本晚餐',500,500,'MANUAL','',10,20)",
+            )
+            execSQL(
+                "INSERT INTO meal_records (id,recordType,mealType,occurredAt,recordEpochDay,description,calculatedCalories,finalCalories,calorieSource,note,createdAt,updatedAt) VALUES (2,'BEVERAGE',NULL,2000,1,'旧版本咖啡',NULL,NULL,'NONE','',11,21)",
+            )
+            execSQL(
+                "INSERT INTO beverage_details (mealRecordId,category,brandOrStore,beverageName,sizeOrVolume,temperature,iceLevel,sweetness,cupCount) VALUES (2,'COFFEE','咖啡店','美式','大杯','热','','',1)",
+            )
+            execSQL(
+                "INSERT INTO diet_templates (id,name,recordType,mealType,description,manualFinalCalories,beverageCategory,brandOrStore,beverageName,sizeOrVolume,temperature,iceLevel,sweetness,cupCount,note,sortOrder,createdAt,updatedAt) VALUES (1,'常用奶茶','BEVERAGE',NULL,'',NULL,'MILK_TEA','店','奶茶','中杯','冰','少冰','半糖',1,'',0,12,22)",
+            )
+            close()
+        }
+
+        val database = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            HabitDatabase::class.java,
+            databaseName,
+        ).addMigrations(MIGRATION_3_4).build()
+        val sqlite = database.openHelper.writableDatabase
+
+        sqlite.query(
+            "SELECT name FROM diet_categories WHERE id=(SELECT dietCategoryId FROM meal_records WHERE id=1)",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("其他餐食", cursor.getString(0))
+        }
+        sqlite.query(
+            "SELECT name FROM diet_categories WHERE id=(SELECT dietCategoryId FROM meal_records WHERE id=2)",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("咖啡", cursor.getString(0))
+        }
+        sqlite.query(
+            "SELECT name FROM diet_categories WHERE id=(SELECT dietCategoryId FROM diet_templates WHERE id=1)",
+        ).use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals("奶茶", cursor.getString(0))
+        }
+        sqlite.query("SELECT createdAt,updatedAt FROM meal_records WHERE id=1").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+            assertEquals(10L, cursor.getLong(0))
+            assertEquals(20L, cursor.getLong(1))
+        }
+        database.close()
+    }
 }

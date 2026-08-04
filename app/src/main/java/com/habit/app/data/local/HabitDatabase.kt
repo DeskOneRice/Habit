@@ -5,12 +5,14 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.time.Clock
+import com.habit.app.domain.model.DIET_CATEGORY_PRESETS
 
 val PRESET_CATEGORIES = listOf("学习", "运动", "生活", "健康", "其他")
 
 @Database(
     entities = [
         CategoryEntity::class,
+        DietCategoryEntity::class,
         HabitEntity::class,
         CheckInEntity::class,
         MealRecordEntity::class,
@@ -22,11 +24,12 @@ val PRESET_CATEGORIES = listOf("学习", "运动", "生活", "健康", "其他")
         DietTemplateToppingEntity::class,
         DietPhotoEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class HabitDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
+    abstract fun dietCategoryDao(): DietCategoryDao
     abstract fun habitDao(): HabitDao
     abstract fun checkInDao(): CheckInDao
     abstract fun dietDao(): DietDao
@@ -61,6 +64,37 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `diet_categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `scope` TEXT NOT NULL, `name` TEXT NOT NULL, `isPreset` INTEGER NOT NULL, `isHidden` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_diet_categories_scope` ON `diet_categories` (`scope`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_diet_categories_scope_sortOrder` ON `diet_categories` (`scope`, `sortOrder`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_diet_categories_scope_name` ON `diet_categories` (`scope`, `name`)")
+        insertDietCategoryPresets(db, System.currentTimeMillis())
+        db.execSQL("ALTER TABLE `meal_records` ADD COLUMN `dietCategoryId` INTEGER NOT NULL DEFAULT 4")
+        db.execSQL("ALTER TABLE `diet_templates` ADD COLUMN `dietCategoryId` INTEGER NOT NULL DEFAULT 4")
+        db.execSQL(
+            """UPDATE meal_records SET dietCategoryId = CASE COALESCE((SELECT category FROM beverage_details WHERE mealRecordId=meal_records.id),'OTHER')
+                WHEN 'COFFEE' THEN 5 WHEN 'MILK_TEA' THEN 6 WHEN 'TEA' THEN 7 WHEN 'FRUIT_DRINK' THEN 8 WHEN 'DAIRY' THEN 9 ELSE 10 END
+                WHERE recordType='BEVERAGE'""".trimIndent(),
+        )
+        db.execSQL(
+            """UPDATE diet_templates SET dietCategoryId = CASE COALESCE(beverageCategory,'OTHER')
+                WHEN 'COFFEE' THEN 5 WHEN 'MILK_TEA' THEN 6 WHEN 'TEA' THEN 7 WHEN 'FRUIT_DRINK' THEN 8 WHEN 'DAIRY' THEN 9 ELSE 10 END
+                WHERE recordType='BEVERAGE'""".trimIndent(),
+        )
+    }
+}
+
+private fun insertDietCategoryPresets(db: SupportSQLiteDatabase, now: Long) {
+    DIET_CATEGORY_PRESETS.forEachIndexed { index, preset ->
+        db.execSQL(
+            "INSERT OR IGNORE INTO diet_categories(id,scope,name,isPreset,isHidden,sortOrder,createdAt,updatedAt) VALUES(?,?,?,1,0,?,?,?)",
+            arrayOf<Any>(preset.id, preset.scope.name, preset.name, index, now, now),
+        )
+    }
+}
+
 class PresetCategoryCallback(
     private val clock: Clock,
 ) : RoomDatabase.Callback() {
@@ -73,5 +107,6 @@ class PresetCategoryCallback(
                 arrayOf<Any>(name, index, now, now),
             )
         }
+        insertDietCategoryPresets(db, now)
     }
 }

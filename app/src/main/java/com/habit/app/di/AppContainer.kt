@@ -9,6 +9,7 @@ import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.PresetCategoryCallback
 import com.habit.app.data.local.MIGRATION_1_2
 import com.habit.app.data.local.MIGRATION_2_3
+import com.habit.app.data.local.MIGRATION_3_4
 import com.habit.app.data.backup.AndroidBackupDocumentStore
 import com.habit.app.data.backup.BackupFolderMigrator
 import com.habit.app.data.backup.HabitBackupService
@@ -52,7 +53,7 @@ class AppContainer(
         applicationContext,
         HabitDatabase::class.java,
         "habit.db",
-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).addCallback(PresetCategoryCallback(clock)).build()
+    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).addCallback(PresetCategoryCallback(clock)).build()
 
     val habitRepository: HabitRepository = RoomHabitRepository(database.habitDao(), clock)
     val categoryRepository: CategoryRepository = RoomCategoryRepository(database, clock)

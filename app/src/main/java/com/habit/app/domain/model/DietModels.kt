@@ -48,6 +48,7 @@ data class MealRecordDraft(
     val beverage: BeverageDetails?,
     val note: String,
     val photos: List<DietPhoto> = emptyList(),
+    val dietCategoryId: Long = 0,
 )
 
 data class MealRecord(
@@ -66,6 +67,7 @@ data class MealRecord(
     val createdAt: Long,
     val updatedAt: Long,
     val photos: List<DietPhoto> = emptyList(),
+    val dietCategoryId: Long = 0,
 )
 
 data class DietPhoto(

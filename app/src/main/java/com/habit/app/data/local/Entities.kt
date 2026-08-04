@@ -17,6 +17,25 @@ data class CategoryEntity(
 )
 
 @Entity(
+    tableName = "diet_categories",
+    indices = [
+        Index("scope"),
+        Index(value = ["scope", "sortOrder"]),
+        Index(value = ["scope", "name"], unique = true),
+    ],
+)
+data class DietCategoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val scope: String,
+    val name: String,
+    val isPreset: Boolean,
+    val isHidden: Boolean,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
     tableName = "habits",
     foreignKeys = [
         ForeignKey(
@@ -78,6 +97,7 @@ data class MealRecordEntity(
     val note: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val dietCategoryId: Long = 0,
 )
 
 @Entity(
@@ -170,6 +190,7 @@ data class DietTemplateEntity(
     val sortOrder: Int,
     val createdAt: Long,
     val updatedAt: Long,
+    val dietCategoryId: Long = 0,
 )
 
 @Entity(

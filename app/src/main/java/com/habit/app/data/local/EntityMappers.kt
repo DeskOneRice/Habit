@@ -7,6 +7,8 @@ import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
 import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRecordType
+import com.habit.app.domain.model.DietCategory
+import com.habit.app.domain.model.DietCategoryScope
 import com.habit.app.domain.model.DietPhoto
 import com.habit.app.domain.model.DietTemplate
 import com.habit.app.domain.model.FoodItemDraft
@@ -27,6 +29,28 @@ fun CategoryEntity.toDomain(): Category = Category(
 
 fun Category.toEntity(): CategoryEntity = CategoryEntity(
     id = id,
+    name = name,
+    isPreset = isPreset,
+    isHidden = isHidden,
+    sortOrder = sortOrder,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun DietCategoryEntity.toDomain(): DietCategory = DietCategory(
+    id = id,
+    scope = DietCategoryScope.valueOf(scope),
+    name = name,
+    isPreset = isPreset,
+    isHidden = isHidden,
+    sortOrder = sortOrder,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun DietCategory.toEntity(): DietCategoryEntity = DietCategoryEntity(
+    id = id,
+    scope = scope.name,
     name = name,
     isPreset = isPreset,
     isHidden = isHidden,
@@ -109,6 +133,7 @@ fun MealRecordWithDetails.toDomain(): MealRecord = MealRecord(
     photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
         DietPhoto(it.id, it.relativePath, it.sortOrder)
     },
+    dietCategoryId = record.dietCategoryId,
 )
 
 fun DietTemplateWithDetails.toDomain(): DietTemplate {
@@ -143,6 +168,7 @@ fun DietTemplateWithDetails.toDomain(): DietTemplate {
             photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
                 DietPhoto(it.id, it.relativePath, it.sortOrder)
             },
+            dietCategoryId = template.dietCategoryId,
         ),
         photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
             DietPhoto(it.id, it.relativePath, it.sortOrder)
