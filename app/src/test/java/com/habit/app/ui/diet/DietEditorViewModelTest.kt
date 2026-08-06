@@ -119,6 +119,7 @@ private object FixedDateProvider : DeviceDateProvider {
 private class RecordingDietRepository : DietRepository {
     var lastSaved: MealRecordDraft? = null
 
+    override fun observeAll(): Flow<List<MealRecord>> = MutableStateFlow(emptyList())
     override fun observeDay(epochDay: Long): Flow<List<MealRecord>> = MutableStateFlow(emptyList())
     override fun observeRecord(id: Long): Flow<MealRecord?> = MutableStateFlow(null)
     override fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<MealRecord>> = MutableStateFlow(emptyList())

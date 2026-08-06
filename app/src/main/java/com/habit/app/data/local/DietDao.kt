@@ -34,6 +34,10 @@ data class DietTemplateWithDetails(
 @Dao
 interface DietDao {
     @Transaction
+    @Query("SELECT * FROM meal_records ORDER BY recordEpochDay DESC, occurredAt ASC, id ASC")
+    fun observeAllRecords(): Flow<List<MealRecordWithDetails>>
+
+    @Transaction
     @Query("SELECT * FROM meal_records WHERE recordEpochDay = :epochDay ORDER BY occurredAt, id")
     fun observeDay(epochDay: Long): Flow<List<MealRecordWithDetails>>
 

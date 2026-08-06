@@ -7,13 +7,18 @@ import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.stats.summarizeDiet
 import com.habit.app.domain.time.DeviceDateProvider
 import java.time.LocalDate
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+
+enum class DietDiaryMode { RECENT, DAY }
+
+data class DietDayGroup(
+    val epochDay: Long,
+    val records: List<MealRecord>,
+)
 
 data class DietDiaryUiState(
     val selectedDate: LocalDate,
@@ -21,26 +26,41 @@ data class DietDiaryUiState(
     val totalCalories: Int? = null,
     val beverageCups: Int = 0,
     val isLoading: Boolean = true,
+    val mode: DietDiaryMode = DietDiaryMode.RECENT,
+    val recentGroups: List<DietDayGroup> = emptyList(),
 )
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class DietDiaryViewModel(
     private val repository: DietRepository,
     dateProvider: DeviceDateProvider,
 ) : ViewModel() {
     private val selectedDate = MutableStateFlow(dateProvider.today())
+    private val mode = MutableStateFlow(DietDiaryMode.RECENT)
 
-    val state: StateFlow<DietDiaryUiState> = selectedDate.flatMapLatest { date ->
-        repository.observeDay(date.toEpochDay()).map { records ->
-            val summary = summarizeDiet(records, date.toEpochDay(), date.toEpochDay())
-            DietDiaryUiState(
-                selectedDate = date,
-                records = records,
-                totalCalories = summary.totalCalories,
-                beverageCups = summary.beverageCups,
-                isLoading = false,
-            )
-        }
+    val state: StateFlow<DietDiaryUiState> = combine(
+        selectedDate,
+        mode,
+        repository.observeAll(),
+    ) { date, selectedMode, allRecords ->
+        val dayRecords = allRecords
+            .filter { it.recordEpochDay == date.toEpochDay() }
+            .sortedWith(compareBy(MealRecord::occurredAt, MealRecord::id))
+        val summary = summarizeDiet(dayRecords, date.toEpochDay(), date.toEpochDay())
+        val groups = allRecords
+            .groupBy(MealRecord::recordEpochDay)
+            .toSortedMap(compareByDescending { it })
+            .map { (epochDay, records) ->
+                DietDayGroup(epochDay, records.sortedWith(compareBy(MealRecord::occurredAt, MealRecord::id)))
+            }
+        DietDiaryUiState(
+            selectedDate = date,
+            records = dayRecords,
+            totalCalories = summary.totalCalories,
+            beverageCups = summary.beverageCups,
+            isLoading = false,
+            mode = selectedMode,
+            recentGroups = groups,
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
@@ -49,5 +69,9 @@ class DietDiaryViewModel(
 
     fun selectDate(date: LocalDate) {
         selectedDate.value = date
+    }
+
+    fun selectMode(value: DietDiaryMode) {
+        mode.value = value
     }
 }

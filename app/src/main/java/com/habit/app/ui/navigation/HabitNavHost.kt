@@ -187,6 +187,7 @@ fun HabitNavHost(
         composable(HabitDestination.DietDiary.route) {
             DietDiaryScreen(
                 viewModel = viewModel(factory = DietDiaryFactory(container)),
+                photoStore = container.dietPhotoStore,
                 onOpenDrawer = onOpenDrawer,
                 onAdd = { navController.navigate(HabitDestination.DietEditor.route()) },
                 onOpenRecord = { navController.navigate(HabitDestination.DietEditor.route(it)) },

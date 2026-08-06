@@ -44,14 +44,15 @@ class RoomDietRepositoryTest {
 
     @Test
     fun saveAndEditMealReplacesChildren() = runTest {
-        val id = repository.save(null, mealDraft("米饭", 230))
-        repository.save(id, mealDraft("面条", 410))
+        val id = repository.save(null, mealDraft("米饭", 230).copy(dietCategoryId = 2))
+        repository.save(id, mealDraft("面条", 410).copy(dietCategoryId = 3))
 
         val saved = repository.observeRecord(id).first()!!
 
         assertEquals(listOf("面条"), saved.foodItems.map { it.name })
         assertEquals(410, saved.finalCalories)
         assertEquals(1_000, saved.createdAt)
+        assertEquals(3, saved.dietCategoryId)
     }
 
     @Test

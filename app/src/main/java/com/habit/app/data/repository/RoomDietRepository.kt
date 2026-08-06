@@ -23,6 +23,9 @@ class RoomDietRepository(
 ) : DietRepository {
     private val dao = database.dietDao()
 
+    override fun observeAll(): Flow<List<MealRecord>> =
+        dao.observeAllRecords().map { rows -> rows.map { it.toDomain() } }
+
     override fun observeDay(epochDay: Long): Flow<List<MealRecord>> =
         dao.observeDay(epochDay).map { rows -> rows.map { it.toDomain() } }
 
@@ -50,6 +53,7 @@ class RoomDietRepository(
             note = normalized.note,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
+            dietCategoryId = normalized.dietCategoryId,
         )
         val recordId = if (existing == null) dao.insertRecord(entity) else {
             dao.updateRecord(entity)
@@ -142,6 +146,17 @@ class RoomDietRepository(
             foodItems = foods,
             beverage = drink,
             note = draft.note.trim(),
+            dietCategoryId = draft.dietCategoryId.takeIf { it > 0 } ?: defaultDietCategoryId(draft),
         )
+    }
+
+    private fun defaultDietCategoryId(draft: MealRecordDraft): Long = when {
+        draft.recordType == DietRecordType.MEAL -> 4L
+        draft.beverage?.category?.name == "COFFEE" -> 5L
+        draft.beverage?.category?.name == "MILK_TEA" -> 6L
+        draft.beverage?.category?.name == "TEA" -> 7L
+        draft.beverage?.category?.name == "FRUIT_DRINK" -> 8L
+        draft.beverage?.category?.name == "DAIRY" -> 9L
+        else -> 10L
     }
 }
