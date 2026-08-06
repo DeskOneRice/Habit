@@ -20,6 +20,10 @@ import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
 import com.habit.app.ui.theme.ThemeRepository
 import com.habit.app.ui.welcome.WelcomeScreen
+import com.habit.app.ui.workbench.RecentDay
+import com.habit.app.ui.workbench.RecentWeekTimeline
+import java.time.LocalDate
+import org.junit.Assert.assertTrue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
@@ -54,6 +58,29 @@ class AdaptivePrimaryActionsTest {
             .performScrollTo()
             .assertHeightIsAtLeast(48.dp)
             .assertIsDisplayed()
+    }
+
+    @Test
+    fun recentWeekTimelineKeepsAllSevenDaysInOneHorizontalRow() {
+        val today = LocalDate.of(2026, 8, 7)
+        val days = (6 downTo 0).map { offset ->
+            RecentDay(
+                date = today.minusDays(offset.toLong()),
+                iconKeys = List(offset % 4) { "book" },
+            )
+        }
+        setShortScreenContent {
+            RecentWeekTimeline(days = days, today = today)
+        }
+
+        val bounds = days.map { day ->
+            composeRule.onNodeWithTag("recent_day_${day.date}")
+                .assertIsDisplayed()
+                .fetchSemanticsNode()
+                .boundsInRoot
+        }
+        assertTrue(bounds.zipWithNext().all { (left, right) -> left.left < right.left })
+        assertTrue(bounds.maxOf { it.center.y } - bounds.minOf { it.center.y } <= 1f)
     }
 
     private fun setShortScreenContent(content: @androidx.compose.runtime.Composable () -> Unit) {

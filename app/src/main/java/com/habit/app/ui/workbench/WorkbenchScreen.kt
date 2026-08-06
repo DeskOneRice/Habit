@@ -93,7 +93,7 @@ fun WorkbenchScreen(
                         )
                     }
                 }
-                item { RecentWeekCard(state.recentDays, onOpenCalendar) }
+                item { RecentWeekCard(state.recentDays, state.today, onOpenCalendar) }
                 item { DietTodayCard(state, onOpenDiet, onAddDiet) }
                 if (state.quickDietTemplates.isNotEmpty()) {
                     item {
@@ -201,22 +201,13 @@ private fun HabitCheckRow(
 }
 
 @Composable
-private fun RecentWeekCard(days: List<RecentDay>, onOpenCalendar: () -> Unit) {
+private fun RecentWeekCard(days: List<RecentDay>, today: java.time.LocalDate, onOpenCalendar: () -> Unit) {
     HabitCard(Modifier.fillMaxWidth().testTag("recent_week_strip")) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("最近 7 天", style = MaterialTheme.typography.titleMedium)
             TextButton(onOpenCalendar) { Text("打开月历") }
         }
-        Row(Modifier.fillMaxWidth()) {
-            days.forEach { day ->
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(day.date.dayOfMonth.toString(), style = MaterialTheme.typography.labelMedium)
-                    val distinct = day.iconKeys.distinct()
-                    Text(distinct.take(3).joinToString("") { habitEmoji(it) }, maxLines = 1)
-                    if (distinct.size > 3) Text("+${distinct.size - 3}", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
+        RecentWeekTimeline(days = days, today = today)
     }
 }
 
