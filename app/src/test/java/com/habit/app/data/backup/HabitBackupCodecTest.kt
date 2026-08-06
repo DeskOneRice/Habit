@@ -37,11 +37,12 @@ class HabitBackupCodecTest {
 
     @Test
     fun schemaOneBackupDecodesWithEmptyDietData() {
-        val legacy = HabitBackupCodec.encode(sampleBackup()).replace("\"schemaVersion\":3", "\"schemaVersion\":1")
+        val legacy = HabitBackupCodec.encode(sampleBackup()).replace(Regex("\"schemaVersion\":\\d+"), "\"schemaVersion\":1")
             .replace(Regex(",\"mealRecords\":\\[.*?],\"foodItems\":\\[.*?],\"beverageDetails\":\\[.*?],\"beverageToppings\":\\[.*?]"), "")
 
         val decoded = HabitBackupCodec.decode(legacy)
 
+        assertEquals(1, decoded.schemaVersion)
         assertTrue(decoded.mealRecords.isEmpty())
     }
 
@@ -62,6 +63,68 @@ class HabitBackupCodecTest {
 
         assertEquals("少冰", decoded.beverageDetails.single().iceLevel)
         assertEquals("珍珠", decoded.beverageToppings.single().name)
+    }
+
+    @Test
+    fun schemaThreeCoffeeRecordNormalizesToCoffeeCategory() {
+        val legacy = sampleBackup().copy(
+            schemaVersion = 3,
+            mealRecords = listOf(
+                BackupMealRecord(
+                    id = 1,
+                    recordType = "BEVERAGE",
+                    mealType = null,
+                    occurredAt = 200,
+                    recordEpochDay = 20,
+                    description = "",
+                    calculatedCalories = null,
+                    finalCalories = 20,
+                    calorieSource = "MANUAL",
+                    note = "",
+                    createdAt = 100,
+                    updatedAt = 100,
+                ),
+            ),
+            beverageDetails = listOf(
+                BackupBeverageDetail(1, "COFFEE", "", "美式", "大杯", "冰", "", "", 1),
+            ),
+        )
+
+        val normalized = HabitBackupCodec.decode(HabitBackupCodec.encode(legacy)).normalizeDietCategories()
+
+        assertEquals(5L, normalized.mealRecords.single().dietCategoryId)
+        assertEquals("咖啡", normalized.dietCategories.single { it.id == 5L }.name)
+    }
+
+    @Test
+    fun schemaFourRoundTripPreservesCustomDietCategory() {
+        val source = sampleBackup().copy(
+            schemaVersion = 4,
+            dietCategories = listOf(
+                BackupDietCategory(31, "BEVERAGE", "手冲咖啡", false, false, 30, 300, 400),
+            ),
+            mealRecords = listOf(
+                BackupMealRecord(
+                    id = 1,
+                    recordType = "BEVERAGE",
+                    mealType = null,
+                    occurredAt = 200,
+                    recordEpochDay = 20,
+                    description = "",
+                    calculatedCalories = null,
+                    finalCalories = 20,
+                    calorieSource = "MANUAL",
+                    note = "",
+                    createdAt = 100,
+                    updatedAt = 100,
+                    dietCategoryId = 31,
+                ),
+            ),
+        )
+
+        val decoded = HabitBackupCodec.decode(HabitBackupCodec.encode(source))
+
+        assertEquals(source, decoded)
     }
 
     private fun sampleBackup() = HabitBackup(

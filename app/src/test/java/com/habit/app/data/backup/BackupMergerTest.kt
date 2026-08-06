@@ -58,6 +58,24 @@ class BackupMergerTest {
         assertEquals(result.dietTemplates.single().id, result.dietPhotos.single().templateId)
     }
 
+    @Test
+    fun newerImportedDietCategoryNameWins() {
+        val current = backup(habit(7, "当前", 10, 20)).copy(
+            dietCategories = listOf(
+                BackupDietCategory(5, "BEVERAGE", "咖啡", true, false, 0, 1, 10),
+            ),
+        )
+        val imported = backup(habit(8, "导入", 11, 21)).copy(
+            dietCategories = listOf(
+                BackupDietCategory(5, "BEVERAGE", "手冲咖啡", true, false, 0, 1, 20),
+            ),
+        )
+
+        val result = BackupMerger.merge(current, imported)
+
+        assertEquals("手冲咖啡", result.dietCategories.single { it.id == 5L }.name)
+    }
+
     private fun backup(
         habit: BackupHabit,
         checkIns: List<BackupCheckIn> = emptyList(),

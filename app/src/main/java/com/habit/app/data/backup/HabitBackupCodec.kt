@@ -12,6 +12,7 @@ object HabitBackupCodec {
             put("appVersion", backup.appVersion); put("exportedAt", backup.exportedAt)
             put("preferencesUpdatedAt", backup.preferencesUpdatedAt)
             put("categories", buildJsonArray { backup.categories.forEach { add(it.toJson()) } })
+            put("dietCategories", buildJsonArray { backup.dietCategories.forEach { add(it.toJson()) } })
             put("habits", buildJsonArray { backup.habits.forEach { add(it.toJson()) } })
             put("checkIns", buildJsonArray { backup.checkIns.forEach { add(it.toJson()) } })
             put("mealRecords", buildJsonArray { backup.mealRecords.forEach { add(it.toJson()) } })
@@ -54,6 +55,7 @@ object HabitBackupCodec {
                 dietTemplates = root.optionalArray("dietTemplates").map { it.jsonObject.toDietTemplate() },
                 dietTemplateFoodItems = root.optionalArray("dietTemplateFoodItems").map { it.jsonObject.toDietTemplateFoodItem() },
                 dietTemplateToppings = root.optionalArray("dietTemplateToppings").map { it.jsonObject.toDietTemplateTopping() },
+                dietCategories = root.optionalArray("dietCategories").map { it.jsonObject.toDietCategory() },
             )
         } catch (error: InvalidBackupException) { throw error }
         catch (error: Exception) { throw InvalidBackupException("备份字段无效", error) }
@@ -67,6 +69,7 @@ object HabitBackupCodec {
         }
         if (backup.exportedAt < 0 || backup.preferencesUpdatedAt < 0) throw InvalidBackupException("备份时间无效")
         requireUnique("分类", backup.categories.map { it.id })
+        requireUnique("饮食分类", backup.dietCategories.map { it.id })
         requireUnique("习惯", backup.habits.map { it.id })
         requireUnique("打卡", backup.checkIns.map { it.id })
         requireUnique("饮食", backup.mealRecords.map { it.id })
@@ -77,6 +80,7 @@ object HabitBackupCodec {
         requireUnique("模板食物", backup.dietTemplateFoodItems.map { it.id })
         requireUnique("模板加料", backup.dietTemplateToppings.map { it.id })
         val categoryIds = backup.categories.mapTo(mutableSetOf()) { it.id }
+        val dietCategoriesById = backup.dietCategories.associateBy { it.id }
         val habitIds = backup.habits.mapTo(mutableSetOf()) { it.id }
         val mealIds = backup.mealRecords.mapTo(mutableSetOf()) { it.id }
         val templateIds = backup.dietTemplates.mapTo(mutableSetOf()) { it.id }
@@ -99,6 +103,18 @@ object HabitBackupCodec {
         if (backup.mealRecords.any { (it.calculatedCalories ?: 0) < 0 || (it.finalCalories ?: 0) < 0 }) {
             throw InvalidBackupException("饮食热量无效")
         }
+        if (backup.mealRecords.any { record ->
+                record.dietCategoryId?.let { id ->
+                    val expectedScope = if (record.recordType == "BEVERAGE") "BEVERAGE" else "MEAL"
+                    dietCategoriesById[id]?.scope != expectedScope
+                } ?: false
+            } || backup.dietTemplates.any { template ->
+                template.dietCategoryId?.let { id ->
+                    val expectedScope = if (template.recordType == "BEVERAGE") "BEVERAGE" else "MEAL"
+                    dietCategoriesById[id]?.scope != expectedScope
+                } ?: false
+            }
+        ) throw InvalidBackupException("饮食记录引用了不存在或类型不匹配的分类")
         if (backup.foodItems.any { (it.calories ?: 0) < 0 }) throw InvalidBackupException("食物热量无效")
         if (backup.beverageDetails.any { it.cupCount < 1 }) throw InvalidBackupException("饮品杯数无效")
     }
@@ -108,6 +124,10 @@ object HabitBackupCodec {
     }
 }
 
+private fun BackupDietCategory.toJson() = buildJsonObject {
+    put("id", id); put("scope", scope); put("name", name); put("isPreset", isPreset)
+    put("isHidden", isHidden); put("sortOrder", sortOrder); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
 private fun BackupCategory.toJson() = buildJsonObject {
     put("id", id); put("name", name); put("isPreset", isPreset); put("isHidden", isHidden)
     put("sortOrder", sortOrder); put("createdAt", createdAt); put("updatedAt", updatedAt)
@@ -126,6 +146,7 @@ private fun BackupMealRecord.toJson() = buildJsonObject {
     put("occurredAt", occurredAt); put("recordEpochDay", recordEpochDay); put("description", description)
     putNullable("calculatedCalories", calculatedCalories); putNullable("finalCalories", finalCalories)
     put("calorieSource", calorieSource); put("note", note); put("createdAt", createdAt); put("updatedAt", updatedAt)
+    putNullable("dietCategoryId", dietCategoryId)
 }
 private fun BackupFoodItem.toJson() = buildJsonObject {
     put("id", id); put("mealRecordId", mealRecordId); put("name", name); putNullable("portionText", portionText)
@@ -151,7 +172,7 @@ private fun BackupDietTemplate.toJson() = buildJsonObject {
     putNullable("beverageName", beverageName); putNullable("sizeOrVolume", sizeOrVolume)
     putNullable("temperature", temperature); putNullable("iceLevel", iceLevel); putNullable("sweetness", sweetness)
     putNullable("cupCount", cupCount); put("note", note); put("sortOrder", sortOrder)
-    put("createdAt", createdAt); put("updatedAt", updatedAt)
+    put("createdAt", createdAt); put("updatedAt", updatedAt); putNullable("dietCategoryId", dietCategoryId)
 }
 private fun BackupDietTemplateFoodItem.toJson() = buildJsonObject {
     put("id", id); put("templateId", templateId); put("name", name); putNullable("portionText", portionText)
@@ -167,10 +188,11 @@ private fun BackupPreferences.toJson() = buildJsonObject {
     put("dailyCalorieGoalEnabled", dailyCalorieGoalEnabled); putNullable("dailyCalorieGoalKcal", dailyCalorieGoalKcal)
 }
 
+private fun JsonObject.toDietCategory() = BackupDietCategory(requiredLong("id"), requiredString("scope"), requiredString("name"), requiredBoolean("isPreset"), requiredBoolean("isHidden"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toCategory() = BackupCategory(requiredLong("id"), requiredString("name"), requiredBoolean("isPreset"), requiredBoolean("isHidden"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toHabit() = BackupHabit(requiredLong("id"), requiredString("name"), requiredString("iconKey"), requiredLong("themeColor"), requiredLong("categoryId"), requiredLong("startEpochDay"), nullableLong("archivedEpochDay"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toCheckIn() = BackupCheckIn(requiredLong("id"), requiredLong("habitId"), requiredLong("checkInEpochDay"), requiredLong("createdAt"), requiredLong("updatedAt"))
-private fun JsonObject.toMealRecord() = BackupMealRecord(requiredLong("id"), requiredString("recordType"), nullableString("mealType"), requiredLong("occurredAt"), requiredLong("recordEpochDay"), requiredString("description"), nullableInt("calculatedCalories"), nullableInt("finalCalories"), requiredString("calorieSource"), requiredString("note"), requiredLong("createdAt"), requiredLong("updatedAt"))
+private fun JsonObject.toMealRecord() = BackupMealRecord(requiredLong("id"), requiredString("recordType"), nullableString("mealType"), requiredLong("occurredAt"), requiredLong("recordEpochDay"), requiredString("description"), nullableInt("calculatedCalories"), nullableInt("finalCalories"), requiredString("calorieSource"), requiredString("note"), requiredLong("createdAt"), requiredLong("updatedAt"), nullableLong("dietCategoryId"))
 private fun JsonObject.toFoodItem() = BackupFoodItem(requiredLong("id"), requiredLong("mealRecordId"), requiredString("name"), nullableString("portionText"), nullableInt("calories"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toBeverageDetail() = BackupBeverageDetail(requiredLong("mealRecordId"), requiredString("category"), requiredString("brandOrStore"), requiredString("beverageName"), requiredString("sizeOrVolume"), requiredString("temperature"), requiredString("iceLevel"), requiredString("sweetness"), requiredInt("cupCount"))
 private fun JsonObject.toBeverageTopping() = BackupBeverageTopping(requiredLong("id"), requiredLong("mealRecordId"), requiredString("name"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
@@ -181,6 +203,7 @@ private fun JsonObject.toDietTemplate() = BackupDietTemplate(
     nullableString("brandOrStore"), nullableString("beverageName"), nullableString("sizeOrVolume"),
     nullableString("temperature"), nullableString("iceLevel"), nullableString("sweetness"), nullableInt("cupCount"),
     requiredString("note"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"),
+    nullableLong("dietCategoryId"),
 )
 private fun JsonObject.toDietTemplateFoodItem() = BackupDietTemplateFoodItem(requiredLong("id"), requiredLong("templateId"), requiredString("name"), nullableString("portionText"), nullableInt("calories"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toDietTemplateTopping() = BackupDietTemplateTopping(requiredLong("id"), requiredLong("templateId"), requiredString("name"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))

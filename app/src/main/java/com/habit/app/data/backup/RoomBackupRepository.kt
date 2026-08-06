@@ -13,6 +13,7 @@ import com.habit.app.data.local.DietPhotoEntity
 import com.habit.app.data.local.DietTemplateEntity
 import com.habit.app.data.local.DietTemplateFoodItemEntity
 import com.habit.app.data.local.DietTemplateToppingEntity
+import com.habit.app.data.local.DietCategoryEntity
 
 enum class ImportMode { REPLACE, MERGE }
 
@@ -28,6 +29,7 @@ data class BackupDatabaseSnapshot(
     val dietTemplates: List<BackupDietTemplate>,
     val dietTemplateFoodItems: List<BackupDietTemplateFoodItem>,
     val dietTemplateToppings: List<BackupDietTemplateTopping>,
+    val dietCategories: List<BackupDietCategory>,
 )
 
 data class ImportSummary(
@@ -55,17 +57,19 @@ class RoomBackupRepository(private val database: HabitDatabase) {
             dietTemplates = templates.map { it.template.toBackup() },
             dietTemplateFoodItems = templates.flatMap { it.foodItems }.map(DietTemplateFoodItemEntity::toBackup),
             dietTemplateToppings = templates.flatMap { it.toppings }.map(DietTemplateToppingEntity::toBackup),
+            dietCategories = database.dietCategoryDao().getAll().map(DietCategoryEntity::toBackup),
         )
     }
 
     suspend fun importDatabase(backup: HabitBackup, mode: ImportMode): ImportSummary {
         HabitBackupCodec.validate(backup)
+        val normalizedBackup = backup.normalizeDietCategories()
         return database.withTransaction {
             val target = when (mode) {
-                ImportMode.REPLACE -> backup
+                ImportMode.REPLACE -> normalizedBackup
                 ImportMode.MERGE -> {
-                    val current = exportDatabase().toHabitBackup(backup)
-                    BackupMerger.merge(current, backup)
+                    val current = exportDatabase().toHabitBackup(normalizedBackup)
+                    BackupMerger.merge(current, normalizedBackup)
                 }
             }
             database.checkInDao().deleteAll()
@@ -73,7 +77,9 @@ class RoomBackupRepository(private val database: HabitDatabase) {
             database.dietDao().deleteAllTemplates()
             database.habitDao().deleteAll()
             database.categoryDao().deleteAll()
+            database.dietCategoryDao().deleteAll()
             database.categoryDao().insertAll(target.categories.map(BackupCategory::toEntity))
+            database.dietCategoryDao().insertAll(target.dietCategories.map(BackupDietCategory::toEntity))
             database.habitDao().insertAll(target.habits.map(BackupHabit::toEntity))
             database.checkInDao().insertAll(target.checkIns.map(BackupCheckIn::toEntity))
             database.dietDao().insertRecords(target.mealRecords.map(BackupMealRecord::toEntity))
@@ -101,10 +107,15 @@ private fun BackupDatabaseSnapshot.toHabitBackup(template: HabitBackup) = templa
     dietTemplates = dietTemplates,
     dietTemplateFoodItems = dietTemplateFoodItems,
     dietTemplateToppings = dietTemplateToppings,
+    dietCategories = dietCategories,
 )
 
 private fun CategoryEntity.toBackup() = BackupCategory(
     id, name, isPreset, isHidden, sortOrder, createdAt, updatedAt,
+)
+
+private fun DietCategoryEntity.toBackup() = BackupDietCategory(
+    id, scope, name, isPreset, isHidden, sortOrder, createdAt, updatedAt,
 )
 
 private fun HabitEntity.toBackup() = BackupHabit(
@@ -114,17 +125,21 @@ private fun HabitEntity.toBackup() = BackupHabit(
 private fun CheckInEntity.toBackup() = BackupCheckIn(
     id, habitId, checkInEpochDay, createdAt, updatedAt,
 )
-private fun MealRecordEntity.toBackup() = BackupMealRecord(id, recordType, mealType, occurredAt, recordEpochDay, description, calculatedCalories, finalCalories, calorieSource, note, createdAt, updatedAt)
+private fun MealRecordEntity.toBackup() = BackupMealRecord(id, recordType, mealType, occurredAt, recordEpochDay, description, calculatedCalories, finalCalories, calorieSource, note, createdAt, updatedAt, dietCategoryId)
 private fun FoodItemEntity.toBackup() = BackupFoodItem(id, mealRecordId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun BeverageDetailEntity.toBackup() = BackupBeverageDetail(mealRecordId, category, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount)
 private fun BeverageToppingEntity.toBackup() = BackupBeverageTopping(id, mealRecordId, name, sortOrder, createdAt, updatedAt)
 private fun DietPhotoEntity.toBackup() = BackupDietPhoto(id, mealRecordId, templateId, relativePath, sortOrder, createdAt)
-private fun DietTemplateEntity.toBackup() = BackupDietTemplate(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt)
+private fun DietTemplateEntity.toBackup() = BackupDietTemplate(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt, dietCategoryId)
 private fun DietTemplateFoodItemEntity.toBackup() = BackupDietTemplateFoodItem(id, templateId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun DietTemplateToppingEntity.toBackup() = BackupDietTemplateTopping(id, templateId, name, sortOrder, createdAt, updatedAt)
 
 private fun BackupCategory.toEntity() = CategoryEntity(
     id, name, isPreset, isHidden, sortOrder, createdAt, updatedAt,
+)
+
+private fun BackupDietCategory.toEntity() = DietCategoryEntity(
+    id, scope, name, isPreset, isHidden, sortOrder, createdAt, updatedAt,
 )
 
 private fun BackupHabit.toEntity() = HabitEntity(
@@ -134,11 +149,11 @@ private fun BackupHabit.toEntity() = HabitEntity(
 private fun BackupCheckIn.toEntity() = CheckInEntity(
     id, habitId, checkInEpochDay, createdAt, updatedAt,
 )
-private fun BackupMealRecord.toEntity() = MealRecordEntity(id, recordType, mealType, occurredAt, recordEpochDay, description, calculatedCalories, finalCalories, calorieSource, note, createdAt, updatedAt)
+private fun BackupMealRecord.toEntity() = MealRecordEntity(id, recordType, mealType, occurredAt, recordEpochDay, description, calculatedCalories, finalCalories, calorieSource, note, createdAt, updatedAt, requireNotNull(dietCategoryId))
 private fun BackupFoodItem.toEntity() = FoodItemEntity(id, mealRecordId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun BackupBeverageDetail.toEntity() = BeverageDetailEntity(mealRecordId, category, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount)
 private fun BackupBeverageTopping.toEntity() = BeverageToppingEntity(id, mealRecordId, name, sortOrder, createdAt, updatedAt)
 private fun BackupDietPhoto.toEntity() = DietPhotoEntity(id, mealRecordId, templateId, relativePath, sortOrder, createdAt)
-private fun BackupDietTemplate.toEntity() = DietTemplateEntity(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt)
+private fun BackupDietTemplate.toEntity() = DietTemplateEntity(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt, requireNotNull(dietCategoryId))
 private fun BackupDietTemplateFoodItem.toEntity() = DietTemplateFoodItemEntity(id, templateId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun BackupDietTemplateTopping.toEntity() = DietTemplateToppingEntity(id, templateId, name, sortOrder, createdAt, updatedAt)

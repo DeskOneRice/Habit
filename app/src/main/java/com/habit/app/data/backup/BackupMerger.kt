@@ -7,6 +7,11 @@ object BackupMerger {
         HabitBackupCodec.validate(current)
         HabitBackupCodec.validate(imported)
 
+        return mergeNormalized(current.normalizeDietCategories(), imported.normalizeDietCategories())
+    }
+
+    private fun mergeNormalized(current: HabitBackup, imported: HabitBackup): HabitBackup {
+
         val categories = current.categories.toMutableList()
         val categoryIds = categories.mapTo(mutableSetOf(), BackupCategory::id)
         var nextCategoryId = (categoryIds.maxOrNull() ?: 0L) + 1
@@ -77,10 +82,20 @@ object BackupMerger {
             }
         }
 
-        val diet = mergeDiet(current, imported)
-        val quick = mergeQuickCapture(current, imported, diet.records)
+        val dietCategoryMerge = mergeDietCategories(current, imported)
+        val importedWithMappedDietCategories = imported.copy(
+            mealRecords = imported.mealRecords.map { record ->
+                record.copy(dietCategoryId = record.dietCategoryId?.let { dietCategoryMerge.importedIdMap[it] ?: it })
+            },
+            dietTemplates = imported.dietTemplates.map { template ->
+                template.copy(dietCategoryId = template.dietCategoryId?.let { dietCategoryMerge.importedIdMap[it] ?: it })
+            },
+        )
+        val diet = mergeDiet(current, importedWithMappedDietCategories)
+        val quick = mergeQuickCapture(current, importedWithMappedDietCategories, diet.records)
         val importedPreferencesAreNewer = imported.preferencesUpdatedAt > current.preferencesUpdatedAt
         return current.copy(
+            schemaVersion = HABIT_BACKUP_SCHEMA_VERSION,
             appVersion = imported.appVersion,
             exportedAt = maxOf(current.exportedAt, imported.exportedAt),
             preferencesUpdatedAt = if (importedPreferencesAreNewer) {
@@ -91,6 +106,7 @@ object BackupMerger {
             categories = categories.sortedBy(BackupCategory::id),
             habits = habits.sortedBy(BackupHabit::id),
             checkIns = checkIns.sortedBy(BackupCheckIn::id),
+            dietCategories = dietCategoryMerge.categories,
             mealRecords = diet.records,
             foodItems = diet.foodItems,
             beverageDetails = diet.beverages,
@@ -102,6 +118,45 @@ object BackupMerger {
             preferences = if (importedPreferencesAreNewer) imported.preferences else current.preferences,
         )
     }
+}
+
+private data class MergedDietCategories(
+    val categories: List<BackupDietCategory>,
+    val importedIdMap: Map<Long, Long>,
+)
+
+private fun mergeDietCategories(current: HabitBackup, imported: HabitBackup): MergedDietCategories {
+    val categories = current.dietCategories.toMutableList()
+    val usedIds = categories.mapTo(mutableSetOf(), BackupDietCategory::id)
+    var nextId = (usedIds.maxOrNull() ?: 0L) + 1
+    val importedIdMap = mutableMapOf<Long, Long>()
+
+    imported.dietCategories.forEach { incoming ->
+        val matchIndex = categories.indexOfFirst { existing ->
+            if (incoming.isPreset) {
+                existing.isPreset && existing.id == incoming.id
+            } else {
+                (existing.id == incoming.id && existing.createdAt == incoming.createdAt) ||
+                    (existing.scope == incoming.scope && existing.name.normalized() == incoming.name.normalized())
+            }
+        }
+        if (matchIndex >= 0) {
+            val existing = categories[matchIndex]
+            importedIdMap[incoming.id] = existing.id
+            if (incoming.updatedAt > existing.updatedAt) {
+                categories[matchIndex] = incoming.copy(id = existing.id)
+            }
+        } else {
+            val targetId = availableId(incoming.id, usedIds) { nextId++ }
+            categories += incoming.copy(id = targetId)
+            importedIdMap[incoming.id] = targetId
+        }
+    }
+
+    return MergedDietCategories(
+        categories = categories.sortedWith(compareBy(BackupDietCategory::scope, BackupDietCategory::sortOrder, BackupDietCategory::id)),
+        importedIdMap = importedIdMap,
+    )
 }
 
 private data class MergedQuickCapture(

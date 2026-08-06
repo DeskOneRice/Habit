@@ -96,6 +96,7 @@ class HabitBackupService(
             categories = database.categories,
             habits = database.habits,
             checkIns = database.checkIns,
+            dietCategories = database.dietCategories,
             mealRecords = database.mealRecords,
             foodItems = database.foodItems,
             beverageDetails = database.beverageDetails,

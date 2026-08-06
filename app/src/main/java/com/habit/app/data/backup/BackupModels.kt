@@ -1,7 +1,10 @@
 package com.habit.app.data.backup
 
+import com.habit.app.domain.model.DIET_CATEGORY_PRESETS
+import com.habit.app.domain.model.DietCategoryScope
+
 const val HABIT_BACKUP_FORMAT = "habit-backup"
-const val HABIT_BACKUP_SCHEMA_VERSION = 3
+const val HABIT_BACKUP_SCHEMA_VERSION = 4
 
 data class HabitBackup(
     val format: String = HABIT_BACKUP_FORMAT,
@@ -21,6 +24,18 @@ data class HabitBackup(
     val dietTemplates: List<BackupDietTemplate> = emptyList(),
     val dietTemplateFoodItems: List<BackupDietTemplateFoodItem> = emptyList(),
     val dietTemplateToppings: List<BackupDietTemplateTopping> = emptyList(),
+    val dietCategories: List<BackupDietCategory> = emptyList(),
+)
+
+data class BackupDietCategory(
+    val id: Long,
+    val scope: String,
+    val name: String,
+    val isPreset: Boolean,
+    val isHidden: Boolean,
+    val sortOrder: Int,
+    val createdAt: Long,
+    val updatedAt: Long,
 )
 
 data class BackupCategory(
@@ -66,6 +81,7 @@ data class BackupMealRecord(
     val recordEpochDay: Long, val description: String, val calculatedCalories: Int?,
     val finalCalories: Int?, val calorieSource: String, val note: String,
     val createdAt: Long, val updatedAt: Long,
+    val dietCategoryId: Long? = null,
 )
 
 data class BackupFoodItem(
@@ -112,6 +128,7 @@ data class BackupDietTemplate(
     val sortOrder: Int,
     val createdAt: Long,
     val updatedAt: Long,
+    val dietCategoryId: Long? = null,
 )
 
 data class BackupDietTemplateFoodItem(
@@ -138,3 +155,52 @@ class InvalidBackupException(message: String, cause: Throwable? = null) : Illega
 
 class UnsupportedBackupVersionException(val version: Int) :
     IllegalArgumentException("不支持的备份版本：$version")
+
+fun HabitBackup.normalizeDietCategories(): HabitBackup {
+    val normalizedCategories = dietCategories.toMutableList()
+    val existingIds = normalizedCategories.mapTo(mutableSetOf(), BackupDietCategory::id)
+    DIET_CATEGORY_PRESETS.forEachIndexed { index, preset ->
+        if (existingIds.add(preset.id)) {
+            normalizedCategories += BackupDietCategory(
+                id = preset.id,
+                scope = preset.scope.name,
+                name = preset.name,
+                isPreset = true,
+                isHidden = false,
+                sortOrder = index,
+                createdAt = 0,
+                updatedAt = 0,
+            )
+        }
+    }
+    val byId = normalizedCategories.associateBy(BackupDietCategory::id)
+    val beverageCategoryByRecord = beverageDetails.associate {
+        it.mealRecordId to legacyBeverageCategoryId(it.category)
+    }
+    fun validCategoryId(id: Long?, scope: DietCategoryScope): Long? =
+        id?.takeIf { byId[it]?.scope == scope.name }
+
+    return copy(
+        schemaVersion = HABIT_BACKUP_SCHEMA_VERSION,
+        dietCategories = normalizedCategories.sortedWith(compareBy(BackupDietCategory::scope, BackupDietCategory::sortOrder, BackupDietCategory::id)),
+        mealRecords = mealRecords.map { record ->
+            val scope = if (record.recordType == "BEVERAGE") DietCategoryScope.BEVERAGE else DietCategoryScope.MEAL
+            val fallback = if (scope == DietCategoryScope.MEAL) 4L else beverageCategoryByRecord[record.id] ?: 10L
+            record.copy(dietCategoryId = validCategoryId(record.dietCategoryId, scope) ?: fallback)
+        },
+        dietTemplates = dietTemplates.map { template ->
+            val scope = if (template.recordType == "BEVERAGE") DietCategoryScope.BEVERAGE else DietCategoryScope.MEAL
+            val fallback = if (scope == DietCategoryScope.MEAL) 4L else legacyBeverageCategoryId(template.beverageCategory)
+            template.copy(dietCategoryId = validCategoryId(template.dietCategoryId, scope) ?: fallback)
+        },
+    )
+}
+
+private fun legacyBeverageCategoryId(category: String?): Long = when (category) {
+    "COFFEE" -> 5L
+    "MILK_TEA" -> 6L
+    "TEA" -> 7L
+    "FRUIT_DRINK" -> 8L
+    "DAIRY" -> 9L
+    else -> 10L
+}
