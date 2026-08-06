@@ -5,6 +5,7 @@ import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.toDomain
 import com.habit.app.domain.model.Category
 import com.habit.app.domain.repository.CategoryRepository
+import androidx.room.withTransaction
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -25,11 +26,14 @@ class RoomCategoryRepository(
     }
 
     override suspend fun create(name: String): Long {
+        val normalized = validateName(name)
         val now = clock.millis()
-        val sortOrder = (categoryDao.observeAll().first().maxOfOrNull { it.sortOrder } ?: -1) + 1
+        val existing = categoryDao.getAll()
+        require(existing.none { it.name.equals(normalized, ignoreCase = true) }) { "分类名称已存在" }
+        val sortOrder = (existing.maxOfOrNull { it.sortOrder } ?: -1) + 1
         return categoryDao.insert(
             CategoryEntity(
-                name = name.trim(),
+                name = normalized,
                 isPreset = false,
                 isHidden = false,
                 sortOrder = sortOrder,
@@ -41,20 +45,31 @@ class RoomCategoryRepository(
 
     override suspend fun rename(id: Long, name: String) {
         val category = requireNotNull(categoryDao.getById(id)) { "分类不存在" }
-        categoryDao.update(category.copy(name = name.trim(), updatedAt = clock.millis()))
+        val normalized = validateName(name)
+        require(categoryDao.getAll().none { it.id != id && it.name.equals(normalized, ignoreCase = true) }) {
+            "分类名称已存在"
+        }
+        categoryDao.update(category.copy(name = normalized, updatedAt = clock.millis()))
     }
 
-    override suspend fun setPresetHidden(id: Long, hidden: Boolean) {
+    override suspend fun setHidden(id: Long, hidden: Boolean) = database.withTransaction {
         val category = requireNotNull(categoryDao.getById(id)) { "分类不存在" }
-        require(category.isPreset) { "只能隐藏预设分类" }
+        if (hidden && !category.isHidden) {
+            require(categoryDao.getAll().count { !it.isHidden } > 1) { "至少保留一个可见分类" }
+        }
         categoryDao.update(category.copy(isHidden = hidden, updatedAt = clock.millis()))
+        Unit
     }
 
-    override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) {
+    override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = database.withTransaction {
         require(sourceId != targetId) { "请选择不同的目标分类" }
         val source = requireNotNull(categoryDao.getById(sourceId)) { "分类不存在" }
-        require(!source.isPreset) { "预设分类不能删除" }
-        requireNotNull(categoryDao.getById(targetId)) { "分类不存在" }
-        categoryDao.reassignHabitsAndDeleteCustomCategory(sourceId, targetId, clock.millis())
+        val target = requireNotNull(categoryDao.getById(targetId)) { "分类不存在" }
+        require(!target.isHidden) { "目标分类不可隐藏" }
+        categoryDao.reassignHabitsAndDeleteCategory(source.id, target.id, clock.millis())
+    }
+
+    private fun validateName(name: String): String = name.trim().also {
+        require(it.isNotEmpty()) { "分类名称不能为空" }
     }
 }

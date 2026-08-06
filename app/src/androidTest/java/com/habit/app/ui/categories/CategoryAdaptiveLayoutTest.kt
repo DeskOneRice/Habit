@@ -62,4 +62,13 @@ class CategoryAdaptiveLayoutTest {
             .performScrollTo()
             .assertIsDisplayed()
     }
+
+    @Test
+    fun mealAndBeverageSectionsShowTheirOwnPresets() {
+        composeRule.onNodeWithTag("category_section_meal").performClick()
+        composeRule.onNodeWithText("其他餐食").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("category_section_beverage").performClick()
+        composeRule.onNodeWithText("咖啡").assertIsDisplayed()
+    }
 }

@@ -16,6 +16,8 @@ import com.habit.app.data.local.CategoryEntity
 import com.habit.app.data.local.CheckInEntity
 import com.habit.app.data.local.HabitEntity
 import com.habit.app.data.local.PRESET_CATEGORIES
+import com.habit.app.data.local.DietCategoryEntity
+import com.habit.app.domain.model.DIET_CATEGORY_PRESETS
 import com.habit.app.di.AppContainer
 import com.habit.app.ui.theme.HabitThemeId
 import java.time.LocalDate
@@ -45,6 +47,20 @@ class HabitTestRobot(val rule: ComposeTestRule) {
                 ),
             )
         }
+        container.database.dietCategoryDao().insertAll(
+            DIET_CATEGORY_PRESETS.mapIndexed { index, preset ->
+                DietCategoryEntity(
+                    id = preset.id,
+                    scope = preset.scope.name,
+                    name = preset.name,
+                    isPreset = true,
+                    isHidden = false,
+                    sortOrder = index,
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            },
+        )
         container.themeRepository.setTheme(HabitThemeId.SKY_BLUE)
     }
 

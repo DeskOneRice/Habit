@@ -39,7 +39,7 @@ fun DietEditorScreen(
     isEditing: Boolean,
     onBack: () -> Unit,
     onSaved: () -> Unit,
-    onManageCategories: () -> Unit,
+    onManageCategories: (DietRecordType) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
@@ -89,7 +89,7 @@ fun DietEditorScreen(
                 selectedId = state.dietCategoryId,
                 onSelected = viewModel::selectDietCategory,
                 onCreate = { showCreateCategory = true },
-                onManage = onManageCategories,
+                onManage = { onManageCategories(state.recordType) },
             )
             Text("发生时间", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

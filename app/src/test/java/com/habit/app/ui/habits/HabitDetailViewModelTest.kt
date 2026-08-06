@@ -224,7 +224,7 @@ private data object OneCategoryRepository : CategoryRepository {
     override fun observeAll() = flowOf(listOf(category))
     override suspend fun create(name: String): Long = error("Not used")
     override suspend fun rename(id: Long, name: String) = Unit
-    override suspend fun setPresetHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun setHidden(id: Long, hidden: Boolean) = Unit
     override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
 }
 
@@ -239,6 +239,6 @@ private class FailingCategoryRepository(private val failure: Throwable) : Catego
 
     override suspend fun create(name: String): Long = error("Not used")
     override suspend fun rename(id: Long, name: String) = Unit
-    override suspend fun setPresetHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun setHidden(id: Long, hidden: Boolean) = Unit
     override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
 }

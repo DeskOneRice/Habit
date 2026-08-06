@@ -42,16 +42,16 @@ interface CategoryDao {
     @Query("UPDATE habits SET categoryId = :toCategoryId, updatedAt = :updatedAt WHERE categoryId = :fromCategoryId")
     suspend fun reassignHabits(fromCategoryId: Long, toCategoryId: Long, updatedAt: Long): Int
 
-    @Query("DELETE FROM categories WHERE id = :categoryId AND isPreset = 0 AND NOT EXISTS (SELECT 1 FROM habits WHERE categoryId = :categoryId)")
-    suspend fun deleteEmptyCustomCategory(categoryId: Long): Int
+    @Query("DELETE FROM categories WHERE id = :categoryId AND NOT EXISTS (SELECT 1 FROM habits WHERE categoryId = :categoryId)")
+    suspend fun deleteEmptyCategory(categoryId: Long): Int
 
     @Transaction
-    suspend fun reassignHabitsAndDeleteCustomCategory(
+    suspend fun reassignHabitsAndDeleteCategory(
         fromCategoryId: Long,
         toCategoryId: Long,
         updatedAt: Long,
     ) {
         reassignHabits(fromCategoryId, toCategoryId, updatedAt)
-        deleteEmptyCustomCategory(fromCategoryId)
+        deleteEmptyCategory(fromCategoryId)
     }
 }

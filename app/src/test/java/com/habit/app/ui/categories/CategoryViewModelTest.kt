@@ -5,6 +5,9 @@ import com.habit.app.domain.model.Habit
 import com.habit.app.domain.model.HabitDraft
 import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.domain.repository.HabitRepository
+import com.habit.app.domain.repository.DietCategoryRepository
+import com.habit.app.domain.model.DietCategory
+import com.habit.app.domain.model.DietCategoryScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,7 +43,7 @@ class CategoryViewModelTest {
     @Test
     fun createDisablesFurtherSavesUntilRepositoryCompletes() = runTest(dispatcher) {
         val repository = BlockingCategoryRepository()
-        val viewModel = CategoryViewModel(repository, EmptyHabitRepository)
+        val viewModel = CategoryViewModel(repository, EmptyHabitRepository, EmptyDietCategoryRepository)
         val collection = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.state.collect {}
         }
@@ -64,7 +67,7 @@ class CategoryViewModelTest {
     @Test
     fun renameDisablesFurtherSavesUntilRepositoryCompletes() = runTest(dispatcher) {
         val repository = BlockingCategoryRepository()
-        val viewModel = CategoryViewModel(repository, EmptyHabitRepository)
+        val viewModel = CategoryViewModel(repository, EmptyHabitRepository, EmptyDietCategoryRepository)
         val collection = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             viewModel.state.collect {}
         }
@@ -82,6 +85,26 @@ class CategoryViewModelTest {
 
         assertFalse(viewModel.state.value.saving)
         assertEquals(1, completions)
+        collection.cancel()
+    }
+
+    @Test
+    fun selectingBeverageLoadsOnlyBeverageCategories() = runTest(dispatcher) {
+        val viewModel = CategoryViewModel(
+            BlockingCategoryRepository(),
+            EmptyHabitRepository,
+            SampleDietCategoryRepository,
+        )
+        val collection = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.state.collect {}
+        }
+
+        viewModel.selectSection(CategorySection.BEVERAGE)
+        advanceUntilIdle()
+
+        assertEquals(CategorySection.BEVERAGE, viewModel.state.value.section)
+        assertTrue(viewModel.state.value.items.all { it.section == CategorySection.BEVERAGE })
+        assertEquals(listOf("咖啡"), viewModel.state.value.items.map { it.name })
         collection.cancel()
     }
 }
@@ -106,8 +129,31 @@ private class BlockingCategoryRepository : CategoryRepository {
         renameGate.await()
     }
 
-    override suspend fun setPresetHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun setHidden(id: Long, hidden: Boolean) = Unit
     override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
+}
+
+private object EmptyDietCategoryRepository : DietCategoryRepository {
+    override fun observeAll(scope: DietCategoryScope) = flowOf(emptyList<DietCategory>())
+    override fun observeVisible(scope: DietCategoryScope) = flowOf(emptyList<DietCategory>())
+    override fun observeUsageCounts(scope: DietCategoryScope) = flowOf(emptyMap<Long, Int>())
+    override suspend fun create(scope: DietCategoryScope, name: String): Long = 1
+    override suspend fun rename(id: Long, name: String) = Unit
+    override suspend fun setHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
+}
+
+private object SampleDietCategoryRepository : DietCategoryRepository by EmptyDietCategoryRepository {
+    override fun observeAll(scope: DietCategoryScope) = flowOf(
+        when (scope) {
+            DietCategoryScope.MEAL -> listOf(dietCategory(4, scope, "其他餐食"))
+            DietCategoryScope.BEVERAGE -> listOf(dietCategory(5, scope, "咖啡"))
+        },
+    )
+
+    private fun dietCategory(id: Long, scope: DietCategoryScope, name: String) = DietCategory(
+        id, scope, name, true, false, 0, 1, 1,
+    )
 }
 
 private data object EmptyHabitRepository : HabitRepository {

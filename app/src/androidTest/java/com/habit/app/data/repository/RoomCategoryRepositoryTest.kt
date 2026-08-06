@@ -55,7 +55,7 @@ class RoomCategoryRepositoryTest {
     }
 
     @Test
-    fun presetCategoryCannotBeDeletedAndCanBeHidden() = runTest {
+    fun presetCategoryCanBeRenamedAndDeletedWithMigration() = runTest {
         val db = database()
         val presetId = db.categoryDao().insert(
             CategoryEntity(
@@ -69,12 +69,37 @@ class RoomCategoryRepositoryTest {
         )
         val repository = RoomCategoryRepository(db, Clock.fixed(Instant.ofEpochMilli(500), ZoneOffset.UTC))
         val targetId = repository.create("Target")
+        val habitId = db.habitDao().insert(
+            HabitEntity(
+                name = "Preset habit", iconKey = "book", themeColor = 0xFF8DB9CC,
+                categoryId = presetId, startEpochDay = 1, archivedEpochDay = null,
+                sortOrder = 0, createdAt = 100, updatedAt = 100,
+            ),
+        )
 
-        val error = runCatching { repository.migrateAndDelete(presetId, targetId) }.exceptionOrNull()
-        repository.setPresetHidden(presetId, hidden = true)
+        repository.rename(presetId, "Reading")
+        assertEquals("Reading", repository.observeAll().first().single { it.id == presetId }.name)
+        repository.migrateAndDelete(presetId, targetId)
 
-        assertEquals("预设分类不能删除", error?.message)
-        assertFalse(repository.observeVisible().first().any { it.id == presetId })
+        assertFalse(repository.observeAll().first().any { it.id == presetId })
+        assertEquals(targetId, db.habitDao().getById(habitId)!!.categoryId)
+    }
+
+    @Test
+    fun lastVisibleCategoryCannotBeHidden() = runTest {
+        val db = database()
+        val onlyId = db.categoryDao().insert(
+            CategoryEntity(
+                name = "Only", isPreset = true, isHidden = false,
+                sortOrder = 0, createdAt = 100, updatedAt = 100,
+            ),
+        )
+        val repository = RoomCategoryRepository(db, Clock.fixed(Instant.ofEpochMilli(500), ZoneOffset.UTC))
+
+        val error = runCatching { repository.setHidden(onlyId, true) }.exceptionOrNull()
+
+        assertEquals("至少保留一个可见分类", error?.message)
+        assertTrue(repository.observeVisible().first().any { it.id == onlyId })
     }
 
     @Test

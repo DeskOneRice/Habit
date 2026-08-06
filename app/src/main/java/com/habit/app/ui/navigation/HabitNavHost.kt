@@ -15,6 +15,7 @@ import com.habit.app.ui.calendar.CalendarScreen
 import com.habit.app.ui.calendar.CalendarViewModel
 import com.habit.app.ui.categories.CategoryScreen
 import com.habit.app.ui.categories.CategoryViewModel
+import com.habit.app.ui.categories.CategorySection
 import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.habits.HabitDetailScreen
 import com.habit.app.ui.habits.HabitDetailViewModel
@@ -87,7 +88,7 @@ fun HabitNavHost(
                     navController.navigate(HabitDestination.HabitDetail.route(habitId))
                 },
                 onCategories = {
-                    navController.navigate(HabitDestination.Categories.route)
+                    navController.navigate(HabitDestination.Categories.route(CategorySection.HABIT.name))
                 },
                 onOpenDrawer = onOpenDrawer,
             )
@@ -137,7 +138,7 @@ fun HabitNavHost(
                     model.delete(id) { navController.returnToHabits() }
                 },
                 onManageCategories = {
-                    navController.navigate(HabitDestination.Categories.route)
+                    navController.navigate(HabitDestination.Categories.route(CategorySection.HABIT.name))
                 },
             )
         }
@@ -167,14 +168,23 @@ fun HabitNavHost(
             SettingsScreen(
                 viewModel = viewModel(factory = SettingsFactory(container)),
                 onCategories = {
-                    navController.navigate(HabitDestination.Categories.route)
+                    navController.navigate(HabitDestination.Categories.route(CategorySection.HABIT.name))
                 },
                 onOpenDrawer = onOpenDrawer,
             )
         }
-        composable(HabitDestination.Categories.route) {
+        composable(
+            route = HabitDestination.Categories.route,
+            arguments = listOf(navArgument("section") {
+                type = NavType.StringType
+                defaultValue = CategorySection.HABIT.name
+            }),
+        ) { entry ->
+            val initialSection = entry.arguments?.getString("section")
+                ?.let { runCatching { CategorySection.valueOf(it) }.getOrNull() }
+                ?: CategorySection.HABIT
             CategoryScreen(
-                viewModel = viewModel(factory = CategoryFactory(container)),
+                viewModel = viewModel(factory = CategoryFactory(container, initialSection)),
                 navigationMode = NavigationMode.BACK,
                 onNavigation = { navController.popBackStack() },
             )
@@ -232,7 +242,14 @@ fun HabitNavHost(
                 isEditing = recordId != null,
                 onBack = { navController.popBackStack() },
                 onSaved = { navController.popBackStack() },
-                onManageCategories = { navController.navigate(HabitDestination.Categories.route) },
+                onManageCategories = { recordType ->
+                    val section = if (recordType == com.habit.app.domain.model.DietRecordType.BEVERAGE) {
+                        CategorySection.BEVERAGE
+                    } else {
+                        CategorySection.MEAL
+                    }
+                    navController.navigate(HabitDestination.Categories.route(section.name))
+                },
             )
         }
         composable(HabitDestination.DietStats.route) {
@@ -303,12 +320,15 @@ private class DetailFactory(
 
 private class CategoryFactory(
     private val container: AppContainer,
+    private val initialSection: CategorySection = CategorySection.HABIT,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         CategoryViewModel(
             container.categoryRepository,
             container.habitRepository,
+            container.dietCategoryRepository,
+            initialSection,
         ) as T
 }
 
