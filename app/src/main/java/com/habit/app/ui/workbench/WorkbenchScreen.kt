@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.ui.components.DeviceDateRefreshEffect
 import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.components.habitEmoji
 import java.time.format.DateTimeFormatter
@@ -62,7 +63,13 @@ fun WorkbenchScreen(
             .testTag("workbench_screen"),
     ) {
         HabitTopAppBar("今日 · ${state.today.format(workbenchDateFormatter)}", NavigationMode.MENU, onOpenDrawer) {
-            TextButton(onCreateHabit, Modifier.testTag("workbench_create")) { Text("＋") }
+            HabitTopAction(
+                text = "＋",
+                contentDescription = "新建习惯",
+                onClick = onCreateHabit,
+                modifier = Modifier.testTag("workbench_create"),
+                textStyle = MaterialTheme.typography.titleLarge,
+            )
         }
         if (state.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

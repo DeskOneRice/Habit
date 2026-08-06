@@ -136,4 +136,39 @@ class MonthGridLayoutTest {
             rightEdge.right <= viewportWidthPx,
         )
     }
+
+    @Test
+    fun weekdayCellsShareDateCentersAndKeepBreathingRoom() {
+        val month = YearMonth.of(2026, 8)
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                MonthGrid(
+                    snapshot = MonthSnapshot(
+                        month = month,
+                        marksByEpochDay = emptyMap(),
+                        stats = MonthStats(0, 0, 0, 0f),
+                    ),
+                    selectedDate = LocalDate.of(2026, 8, 3),
+                    onDateSelected = {},
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("month_weekday_1")
+            .assertHeightIsAtLeast(40.dp)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("month_weekday_7")
+            .assertHeightIsAtLeast(40.dp)
+            .assertIsDisplayed()
+
+        assertSameHorizontalCenter("month_weekday_1", "day_2026-08-03")
+        assertSameHorizontalCenter("month_weekday_7", "day_2026-08-02")
+    }
+
+    private fun assertSameHorizontalCenter(firstTag: String, secondTag: String) {
+        val first = composeRule.onNodeWithTag(firstTag).fetchSemanticsNode().boundsInRoot.center.x
+        val second = composeRule.onNodeWithTag(secondTag).fetchSemanticsNode().boundsInRoot.center.x
+        assertEquals(first, second, 1f)
+    }
 }

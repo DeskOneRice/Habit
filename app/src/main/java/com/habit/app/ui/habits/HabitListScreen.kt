@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.Habit
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.components.habitEmoji
 
@@ -36,9 +37,11 @@ fun HabitListScreen(
                 navigationMode = NavigationMode.MENU,
                 onNavigation = onOpenDrawer,
             ) {
-                TextButton(onClick = onCategories) {
-                    Text("管理分类")
-                }
+                HabitTopAction(
+                    text = "分类",
+                    contentDescription = "管理分类",
+                    onClick = onCategories,
+                )
             }
         },
         floatingActionButton = {

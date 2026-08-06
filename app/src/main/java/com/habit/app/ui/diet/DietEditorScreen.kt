@@ -26,6 +26,7 @@ import com.habit.app.domain.model.mealTypeDisplayOrder
 import com.habit.app.ui.components.CategoryChipFlow
 import com.habit.app.ui.components.CategoryChipItem
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 import java.time.Instant
 import java.time.LocalTime
@@ -63,7 +64,14 @@ fun DietEditorScreen(
     Scaffold(
         topBar = {
             HabitTopAppBar(if (isEditing) "编辑饮食" else "记一餐", NavigationMode.BACK, { viewModel.cancel(onBack) }) {
-                if (isEditing) TextButton(onClick = { showDelete = true }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                if (isEditing) {
+                    HabitTopAction(
+                        text = "删除",
+                        contentDescription = "删除饮食记录",
+                        onClick = { showDelete = true },
+                        contentColor = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
     ) { padding ->

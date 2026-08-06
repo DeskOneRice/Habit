@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
@@ -87,7 +88,7 @@ fun HabitDatePickerDialog(
                 }
                 Row(Modifier.fillMaxWidth()) {
                     HABIT_WEEKDAY_LABELS.forEachIndexed { index, label ->
-                        CalendarCell(tag = "habit_weekday_${index + 1}") {
+                        CalendarCell(tag = "habit_weekday_${index + 1}", square = false) {
                             Text(
                                 label,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -130,11 +131,12 @@ fun HabitDatePickerDialog(
 @Composable
 private fun RowScope.CalendarCell(
     tag: String? = null,
+    square: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val modifier = Modifier
         .weight(1f)
-        .aspectRatio(1f)
+        .let { base -> if (square) base.aspectRatio(1f) else base.height(40.dp) }
         .let { base -> if (tag == null) base else base.testTag(tag) }
     Box(
         modifier = modifier,

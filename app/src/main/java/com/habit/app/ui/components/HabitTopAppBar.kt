@@ -4,20 +4,45 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 
 enum class NavigationMode { MENU, BACK }
+
+@Composable
+fun HabitTopAction(
+    text: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = MaterialTheme.typography.labelLarge,
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics { this.contentDescription = contentDescription },
+        contentPadding = PaddingValues(0.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = contentColor),
+    ) {
+        Text(text = text, style = textStyle)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,17 +65,15 @@ fun HabitTopAppBar(
                         .testTag("navigate_back"),
                 )
             } else {
-                TextButton(
+                HabitTopAction(
+                    text = "☰",
+                    contentDescription = "打开菜单",
                     onClick = onNavigation,
                     modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .offset(x = (-4).dp)
-                        .semantics { contentDescription = "打开菜单" }
                         .testTag("open_drawer"),
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text("☰", fontSize = 26.sp)
-                }
+                    textStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
+                )
             }
         },
         actions = actions,

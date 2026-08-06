@@ -29,6 +29,7 @@ import com.habit.app.domain.model.MealType
 import com.habit.app.domain.time.HabitTimePolicy
 import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 import java.time.Instant
 import java.time.LocalDate
@@ -48,13 +49,12 @@ fun DietRecordDetailScreen(
         topBar = {
             HabitTopAppBar("饮食详情", NavigationMode.BACK, onBack) {
                 state.record?.let { record ->
-                    TextButton(
+                    HabitTopAction(
+                        text = "编辑",
+                        contentDescription = "编辑饮食记录",
                         onClick = { onEdit(record.id) },
                         modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("diet_detail_edit"),
-                        contentPadding = PaddingValues(horizontal = 4.dp),
-                    ) {
-                        Text("编辑", style = MaterialTheme.typography.labelLarge)
-                    }
+                    )
                 }
             }
         },

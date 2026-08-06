@@ -33,13 +33,20 @@ fun MonthGrid(
 ) {
     Column(modifier) {
         Row(Modifier.fillMaxWidth()) {
-            weekdayLabels.forEach { label ->
-                Text(
-                    text = label,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelMedium,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
+            weekdayLabels.forEachIndexed { index, label ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .testTag("month_weekday_${index + 1}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
             }
         }
         val leadingEmptyCells = snapshot.month.atDay(1).dayOfWeek.mondayIndex()

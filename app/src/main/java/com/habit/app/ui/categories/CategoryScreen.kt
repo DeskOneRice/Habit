@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 
 @Composable
@@ -38,11 +39,13 @@ fun CategoryScreen(
                 navigationMode = navigationMode,
                 onNavigation = onNavigation,
             ) {
-                TextButton(
+                HabitTopAction(
+                    text = "＋",
+                    contentDescription = "新建分类",
                     onClick = { create = true },
-                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).testTag("category_add"),
-                    contentPadding = PaddingValues(0.dp),
-                ) { Text("＋", style = MaterialTheme.typography.titleLarge) }
+                    modifier = Modifier.testTag("category_add"),
+                    textStyle = MaterialTheme.typography.titleLarge,
+                )
             }
         },
     ) { contentPadding ->

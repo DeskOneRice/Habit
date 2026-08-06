@@ -1,6 +1,7 @@
 package com.habit.app.ui.habits
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -126,13 +128,17 @@ fun HabitDetailScreen(
                 } else {
                     Text("此习惯已归档，历史记录仍可查看。")
                 }
-                TextButton(
+                OutlinedButton(
                     onClick = { deleteStage = 1 },
                     enabled = !state.actionInProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
                         .testTag("delete_habit"),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
                 ) {
                     Text("删除习惯")
                 }
@@ -350,12 +356,20 @@ private fun SingleHabitMonthGrid(
 ) {
     val weekdayLabels = listOf("一", "二", "三", "四", "五", "六", "日")
     Row(Modifier.fillMaxWidth()) {
-        weekdayLabels.forEach { label ->
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.weight(1f),
-            )
+        weekdayLabels.forEachIndexed { index, label ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp)
+                    .testTag("habit_detail_weekday_${index + 1}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
         }
     }
 

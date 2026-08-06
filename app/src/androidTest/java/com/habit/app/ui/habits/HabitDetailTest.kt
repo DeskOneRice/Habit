@@ -1,6 +1,7 @@
 package com.habit.app.ui.habits
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsMatcher
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
@@ -73,6 +75,11 @@ class HabitDetailTest {
         composeRule
             .onNodeWithTag("habit_detail_month_title")
             .assertTextEquals("${currentMonth.year}年${currentMonth.monthValue}月")
+
+        composeRule.onNodeWithTag("delete_habit")
+            .performScrollTo()
+            .assertHeightIsAtLeast(48.dp)
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
         composeRule.onNodeWithTag("habit_editor_screen").assertIsDisplayed()
