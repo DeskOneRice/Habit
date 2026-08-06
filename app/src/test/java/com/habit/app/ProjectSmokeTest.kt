@@ -10,8 +10,8 @@ class ProjectSmokeTest {
     }
 
     @Test
-    fun releaseMetadataIsHabitZeroPointFourPointOne() {
-        assertEquals("0.4.1", BuildConfig.VERSION_NAME)
-        assertEquals(9, BuildConfig.VERSION_CODE)
+    fun releaseMetadataIsHabitZeroPointFivePointZero() {
+        assertEquals("0.5.0", BuildConfig.VERSION_NAME)
+        assertEquals(10, BuildConfig.VERSION_CODE)
     }
 }

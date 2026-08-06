@@ -71,7 +71,7 @@ class HabitBackupService(
     private val folderMigrator: BackupFolderMigrator,
     private val photoStore: DietPhotoStore,
     private val clock: Clock = Clock.systemUTC(),
-    private val appVersion: String = "0.4.0",
+    private val appVersion: String,
 ) : BackupOperations {
     private val applicationContext = context.applicationContext
     private val resolver = applicationContext.contentResolver

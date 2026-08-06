@@ -29,7 +29,7 @@ class ThemePersistenceTest {
         robot.resetDatabase()
         robot.seedHabit(name = "主题验证")
         composeRule.activityRule.scenario.recreate()
-        robot.waitForTag("bottom_navigation")
+        robot.waitForTag("workbench_screen")
     }
 
     @Test

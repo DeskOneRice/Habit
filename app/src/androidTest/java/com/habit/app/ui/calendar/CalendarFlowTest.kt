@@ -102,6 +102,8 @@ class CalendarFlowTest {
 
     private fun launchCalendar() {
         scenario = ActivityScenario.launch(MainActivity::class.java)
+        robot.waitForTag("workbench_screen")
+        robot.navigateTo("日历")
         robot.waitForTag("calendar_screen")
     }
 

@@ -26,7 +26,11 @@ class WelcomeFlowTest {
     private val robot by lazy { HabitTestRobot(composeRule) }
 
     @Before
-    fun reset() = robot.resetDatabase()
+    fun reset() {
+        robot.resetDatabase()
+        composeRule.activityRule.scenario.recreate()
+        robot.waitForTag("welcome_screen")
+    }
 
     @Test
     fun emptyDatabaseShowsWelcomeAndCreateAction() {
@@ -44,22 +48,23 @@ class WelcomeFlowTest {
     }
 
     @Test
-    fun existingHabitStartsAtCalendarWithBottomNavigation() {
+    fun existingHabitStartsAtWorkbenchWithSideDrawerNavigation() {
         robot.seedHabit()
         composeRule.activityRule.scenario.recreate()
 
-        robot.assertDisplayed("calendar_screen")
-        robot.assertDisplayed("bottom_navigation")
+        robot.assertDisplayed("workbench_screen")
+        robot.assertDisplayed("open_drawer")
+        composeRule.onNodeWithTag("bottom_navigation").assertDoesNotExist()
     }
 
     @Test
     fun backFromFirstCreatedHabitListDoesNotReturnToCompletedOnboarding() {
         composeRule.onNodeWithTag("welcome_create").performClick()
         composeRule.onNodeWithTag("habit_name").performTextInput("第一个习惯")
-        composeRule.onNodeWithTag("emoji_book").performClick()
+        robot.selectEmoji("emoji_book")
         composeRule.onNodeWithText("学习").performClick()
         composeRule.onNodeWithTag("save_habit").performClick()
-        robot.waitForTag("habit_list_screen")
+        robot.waitForTag("workbench_screen")
 
         pressBackUnconditionally()
 

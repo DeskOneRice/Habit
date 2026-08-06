@@ -47,6 +47,8 @@ class AdaptiveDeviceConfigurationTest {
             instrumentation.waitForIdleSync()
 
             scenario = ActivityScenario.launch(MainActivity::class.java)
+            robot.waitForTag("workbench_screen")
+            robot.navigateTo("日历")
             robot.waitForTag("calendar_screen")
             scenario.onActivity { activity ->
                 val configuration = activity.resources.configuration

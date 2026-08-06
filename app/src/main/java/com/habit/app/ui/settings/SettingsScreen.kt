@@ -1,5 +1,6 @@
 package com.habit.app.ui.settings
 
+import com.habit.app.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -134,7 +135,7 @@ fun SettingsScreen(
             )
         }
         Text("版本", style = MaterialTheme.typography.titleLarge)
-            Text("0.4.1 · 内测版")
+        Text("${BuildConfig.VERSION_NAME} · 内测版")
         }
     }
 

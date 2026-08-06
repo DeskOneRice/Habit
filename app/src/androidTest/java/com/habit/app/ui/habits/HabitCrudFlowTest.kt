@@ -34,15 +34,23 @@ class HabitCrudFlowTest {
     private val robot by lazy { HabitTestRobot(composeRule) }
 
     @Before
-    fun reset() = robot.resetDatabase()
+    fun reset() {
+        robot.resetDatabase()
+        composeRule.activityRule.scenario.recreate()
+        robot.waitForTag("welcome_screen")
+    }
 
     @Test
     fun createsHabitAndShowsItInCategoryList() {
         composeRule.onNodeWithTag("welcome_create").performClick()
         composeRule.onNodeWithTag("habit_name").performTextInput("背单词")
-        composeRule.onNodeWithTag("emoji_book").performClick()
+        robot.selectEmoji("emoji_book")
         composeRule.onNodeWithText("学习").performClick()
         composeRule.onNodeWithTag("save_habit").performClick()
+
+        robot.waitForTag("workbench_screen")
+        robot.navigateTo("习惯")
+        robot.waitForTag("habit_list_screen")
 
         composeRule.onNodeWithText("背单词").assertIsDisplayed()
         composeRule.onNodeWithText("学习").assertIsDisplayed()
@@ -90,28 +98,34 @@ class HabitCrudFlowTest {
     fun migratesNonEmptyCustomCategoryBeforeDeletingIt() {
         composeRule.onNodeWithTag("welcome_create").performClick()
         robot.createHabit("迁移习惯", "emoji_book", "学习")
-        composeRule.onNodeWithText("管理分类").performClick()
+        composeRule.onNodeWithContentDescription("管理分类").performClick()
         composeRule.onNodeWithText("新建分类").performClick()
         composeRule.onNodeWithText("分类名称").performTextInput("阅读")
         composeRule.onNodeWithText("保存").performClick()
-        robot.waitForText("完成")
-        composeRule.onNodeWithText("完成").performClick()
+        robot.waitForText("阅读")
+        val readingCategoryId = robot.habitCategoryId("阅读")
+        composeRule.onNodeWithTag("navigate_back").performClick()
+        robot.waitForTag("habit_list_screen")
         composeRule.onNodeWithText("迁移习惯").performClick()
         composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
         robot.waitForText("阅读")
         composeRule.onNodeWithText("阅读").performClick()
         composeRule.onNodeWithTag("save_habit").performClick()
         composeRule
-            .onNodeWithContentDescription("返回习惯列表")
+            .onNodeWithTag("navigate_back")
+            .performClick()
+        composeRule.onNodeWithContentDescription("管理分类").performClick()
+        composeRule
+            .onNodeWithTag("category_delete_$readingCategoryId")
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithText("管理分类").performClick()
-        composeRule.onNodeWithText("删除").performClick()
+        robot.waitForTag("category_migration_warning")
         composeRule.onNodeWithTag("category_migration_warning").assertIsDisplayed()
         composeRule.onAllNodesWithText("学习").filter(hasClickAction()).onFirst().performClick()
         composeRule.onNodeWithTag("category_migration_confirm").performClick()
         composeRule.onNodeWithText("阅读").assertDoesNotExist()
-        composeRule.onNodeWithText("完成").performClick()
+        composeRule.onNodeWithTag("navigate_back").performClick()
+        robot.waitForTag("habit_list_screen")
         composeRule.onNodeWithText("学习").assertIsDisplayed()
         composeRule.onNodeWithText("迁移习惯").assertIsDisplayed()
     }
@@ -136,8 +150,9 @@ class HabitCrudFlowTest {
     fun categoryChipsUseHorizontalSpaceBeforeWrapping() {
         composeRule.onNodeWithTag("welcome_create").performClick()
 
-        val first = composeRule.onNodeWithTag("category_chip_1").fetchSemanticsNode().boundsInRoot
-        val second = composeRule.onNodeWithTag("category_chip_2").fetchSemanticsNode().boundsInRoot
+        val categoryIds = robot.visibleHabitCategoryIds().take(2)
+        val first = composeRule.onNodeWithTag("category_chip_${categoryIds[0]}").fetchSemanticsNode().boundsInRoot
+        val second = composeRule.onNodeWithTag("category_chip_${categoryIds[1]}").fetchSemanticsNode().boundsInRoot
 
         assertTrue(second.left > first.left)
         assertTrue(kotlin.math.abs(second.center.y - first.center.y) < 2f)
@@ -158,7 +173,7 @@ class HabitCrudFlowTest {
         composeRule.onNodeWithTag("welcome_create").performClick()
 
         composeRule.onNodeWithTag("start_date_picker").performScrollTo().performClick()
-        composeRule.onNodeWithTag("start_date_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("habit_date_dialog").assertIsDisplayed()
     }
 
     @Test

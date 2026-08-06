@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
@@ -24,7 +25,12 @@ class DietNavigationFlowTest {
 
     private val robot by lazy { HabitTestRobot(composeRule) }
 
-    @Before fun reset() = robot.resetDatabase()
+    @Before
+    fun reset() {
+        robot.resetDatabase()
+        composeRule.activityRule.scenario.recreate()
+        robot.waitForTag("welcome_screen")
+    }
 
     @Test
     fun diaryOpensReadOnlyDetailBeforeEditor() {
@@ -56,6 +62,6 @@ class DietNavigationFlowTest {
         composeRule.onNodeWithTag("diet_detail_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("diet_save").assertDoesNotExist()
         composeRule.onNodeWithTag("diet_detail_edit").performClick()
-        composeRule.onNodeWithTag("diet_save").assertIsDisplayed()
+        composeRule.onNodeWithTag("diet_save").performScrollTo().assertIsDisplayed()
     }
 }

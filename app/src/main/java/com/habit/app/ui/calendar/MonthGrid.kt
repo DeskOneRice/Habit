@@ -103,7 +103,7 @@ private fun DayCell(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
-            sortedMarks.take(3).forEachIndexed { index, mark ->
+            sortedMarks.take(4).forEachIndexed { index, mark ->
                 Text(
                     text = habitEmoji(mark.iconKey),
                     fontSize = 9.sp,
@@ -117,7 +117,7 @@ private fun DayCell(
                 )
             }
         }
-        val overflow = (sortedMarks.size - 3).coerceAtLeast(0)
+        val overflow = (sortedMarks.size - 4).coerceAtLeast(0)
         if (overflow > 0) {
             Text(
                 text = "+$overflow",

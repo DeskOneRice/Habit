@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -107,16 +107,23 @@ private fun EmojiPickerSheet(
                 label = { Text("搜索：实验、羽毛球、喝水…") },
                 singleLine = true,
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(EmojiCategory.entries) { item ->
-                    if (item != EmojiCategory.RECENT || recentKeys.isNotEmpty()) {
-                        FilterChip(
-                            selected = category == item,
-                            onClick = { category = item },
-                            label = { Text(item.label) },
-                            modifier = Modifier.semantics { this.selected = category == item },
-                        )
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .testTag("emoji_category_list"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                EmojiCategory.entries.forEach { item ->
+                    if (item == EmojiCategory.RECENT && recentKeys.isEmpty()) return@forEach
+                    FilterChip(
+                        selected = category == item,
+                        onClick = { category = item },
+                        label = { Text(item.label) },
+                        modifier = Modifier
+                            .testTag("emoji_category_${item.name.lowercase()}")
+                            .semantics { this.selected = category == item },
+                    )
                 }
             }
             if (visibleOptions.isEmpty()) {

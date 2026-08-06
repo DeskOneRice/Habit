@@ -9,7 +9,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.datastore.preferences.core.edit
 import androidx.compose.ui.test.printToString
 import androidx.test.platform.app.InstrumentationRegistry
 import com.habit.app.data.local.CategoryEntity
@@ -19,6 +21,7 @@ import com.habit.app.data.local.PRESET_CATEGORIES
 import com.habit.app.data.local.DietCategoryEntity
 import com.habit.app.domain.model.DIET_CATEGORY_PRESETS
 import com.habit.app.di.AppContainer
+import com.habit.app.di.themeDataStore
 import com.habit.app.ui.theme.HabitThemeId
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
@@ -33,6 +36,7 @@ class HabitTestRobot(val rule: ComposeTestRule) {
         get() = application.container
 
     fun resetDatabase() = runBlocking {
+        application.themeDataStore.edit { preferences -> preferences.clear() }
         container.database.clearAllTables()
         val now = 100L
         PRESET_CATEGORIES.forEachIndexed { index, name ->
@@ -173,6 +177,14 @@ class HabitTestRobot(val rule: ComposeTestRule) {
         container.database.habitDao().observeAll().first().single { it.name == name }.id
     }
 
+    fun habitCategoryId(name: String): Long = runBlocking {
+        container.database.categoryDao().observeAll().first().single { it.name == name }.id
+    }
+
+    fun visibleHabitCategoryIds(): List<Long> = runBlocking {
+        container.database.categoryDao().observeVisible().first().map(CategoryEntity::id)
+    }
+
     private suspend fun insertHabit(
         name: String,
         iconKey: String,
@@ -194,7 +206,22 @@ class HabitTestRobot(val rule: ComposeTestRule) {
     )
 
     fun navigateTo(label: String) {
-        rule.onNodeWithText(label).performClick()
+        val destinationTag = when (label) {
+            "工作台", "今日工作台" -> "drawer_workbench"
+            "日历", "习惯日历" -> "drawer_calendar"
+            "习惯", "我的习惯" -> "drawer_habits"
+            "分类", "分类管理" -> "drawer_categories_drawer"
+            "饮食", "饮食日记" -> "drawer_diet"
+            "饮食模板" -> "drawer_diet_templates"
+            "饮食统计" -> "drawer_diet_stats"
+            "饮食设置" -> "drawer_diet_settings"
+            "设置", "主题与设置" -> "drawer_settings"
+            else -> error("未知侧边栏入口：$label")
+        }
+        waitForTag("open_drawer")
+        rule.onNodeWithTag("open_drawer").performClick()
+        waitForTag(destinationTag)
+        rule.onNodeWithTag(destinationTag).performScrollTo().performClick()
     }
 
     fun click(testTag: String) {
@@ -207,9 +234,29 @@ class HabitTestRobot(val rule: ComposeTestRule) {
 
     fun createHabit(name: String, emojiTag: String, category: String) {
         rule.onNodeWithTag("habit_name").performTextInput(name)
-        rule.onNodeWithTag(emojiTag).performClick()
+        selectEmoji(emojiTag)
         rule.onNodeWithText(category).performClick()
         rule.onNodeWithTag("save_habit").performClick()
+        waitForTag("workbench_screen")
+        navigateTo("习惯")
+        waitForTag("habit_list_screen")
+    }
+
+    fun selectEmoji(legacyTag: String) {
+        val (categoryTag, pickerTag) = when (legacyTag) {
+            "emoji_book" -> "emoji_category_study" to "emoji_emoji:📚"
+            "emoji_sprout" -> "emoji_category_daily" to "emoji_emoji:🌱"
+            "emoji_run" -> "emoji_category_sport" to "emoji_emoji:🏃"
+            "emoji_heart" -> "emoji_category_health" to "emoji_emoji:💛"
+            "emoji_water" -> "emoji_category_food" to "emoji_emoji:💧"
+            "emoji_star" -> "emoji_category_hobby" to "emoji_emoji:⭐"
+            else -> error("未知测试 Emoji：$legacyTag")
+        }
+        rule.onNodeWithTag("open_emoji_picker").performClick()
+        waitForTag("emoji_picker_sheet")
+        rule.onNodeWithTag(categoryTag).performScrollTo().performClick()
+        waitForTag(pickerTag)
+        rule.onNodeWithTag(pickerTag).performClick()
     }
 
     fun assertTextVisible(text: String) {

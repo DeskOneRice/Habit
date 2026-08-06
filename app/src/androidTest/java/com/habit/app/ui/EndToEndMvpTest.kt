@@ -53,13 +53,13 @@ class EndToEndMvpTest {
         robot.assertDisplayed("welcome_screen")
         robot.click("welcome_create")
         composeRule.onNodeWithTag("habit_name").performTextInput(habitName)
-        composeRule.onNodeWithTag("emoji_star").performClick()
+        robot.selectEmoji("emoji_star")
         composeRule.onNodeWithTag("habit_color_rose").performClick()
         composeRule.onNodeWithText("学习").performClick()
         composeRule.onNodeWithTag("save_habit").performClick()
 
-        robot.waitForTag("habit_list_screen")
-        robot.assertDisplayed("bottom_navigation")
+        robot.waitForTag("workbench_screen")
+        robot.assertDisplayed("open_drawer")
         val habitId = robot.habitId(habitName)
         assertEquals(0xFFDF988F, robot.habitThemeColor(habitId))
 
@@ -74,6 +74,8 @@ class EndToEndMvpTest {
 
         scenario?.close()
         launch()
+        robot.waitForTag("workbench_screen")
+        robot.navigateTo("日历")
         robot.waitForTag("calendar_screen")
         checkInOnAggregateCalendar(today, habitId)
 
@@ -85,10 +87,9 @@ class EndToEndMvpTest {
         pressBackUnconditionally()
         robot.waitForTag("habit_detail_screen")
         composeRule
-            .onNodeWithContentDescription("返回习惯列表")
-            .performScrollTo()
+            .onNodeWithTag("navigate_back")
             .performClick()
-        robot.waitForTag("bottom_navigation")
+        robot.waitForTag("habit_list_screen")
 
         robot.navigateTo("设置")
         composeRule.onNodeWithTag("theme_SAGE_GREEN").performClick()

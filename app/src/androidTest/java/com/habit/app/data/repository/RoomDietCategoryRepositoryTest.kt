@@ -70,6 +70,17 @@ class RoomDietCategoryRepositoryTest {
 
     @Test
     fun presetCanBeRenamedHiddenAndRestored() = runTest {
+        database.dietCategoryDao().insert(
+            DietCategoryEntity(
+                scope = DietCategoryScope.BEVERAGE.name,
+                name = "其他饮品",
+                isPreset = true,
+                isHidden = false,
+                sortOrder = 1,
+                createdAt = 100,
+                updatedAt = 100,
+            ),
+        )
         val id = database.dietCategoryDao().insert(
             DietCategoryEntity(
                 scope = DietCategoryScope.BEVERAGE.name,
@@ -107,4 +118,3 @@ class RoomDietCategoryRepositoryTest {
         createdAt = 100, updatedAt = 100, dietCategoryId = categoryId,
     )
 }
-

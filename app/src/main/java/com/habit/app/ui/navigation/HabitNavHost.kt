@@ -41,6 +41,8 @@ import com.habit.app.ui.welcome.WelcomeScreen
 import com.habit.app.ui.workbench.WorkbenchScreen
 import com.habit.app.ui.workbench.WorkbenchViewModel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun HabitNavHost(
@@ -58,7 +60,9 @@ fun HabitNavHost(
                 onSkip = {
                     scope.launch {
                         container.onboardingPreferencesRepository.complete()
-                        navController.completeOnboarding()
+                        withContext(Dispatchers.Main.immediate) {
+                            navController.completeOnboarding()
+                        }
                     }
                 },
             )
@@ -121,7 +125,9 @@ fun HabitNavHost(
                         ) {
                             scope.launch {
                                 container.onboardingPreferencesRepository.complete()
-                                navController.completeOnboarding()
+                                withContext(Dispatchers.Main.immediate) {
+                                    navController.completeOnboarding()
+                                }
                             }
                         } else {
                             navController.popBackStack()

@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
+import com.habit.app.BuildConfig
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.PresetCategoryCallback
 import com.habit.app.data.local.MIGRATION_1_2
@@ -87,5 +88,6 @@ class AppContainer(
         folderMigrator = BackupFolderMigrator(backupDocumentStore),
         photoStore = dietPhotoStore,
         clock = clock,
+        appVersion = BuildConfig.VERSION_NAME,
     )
 }

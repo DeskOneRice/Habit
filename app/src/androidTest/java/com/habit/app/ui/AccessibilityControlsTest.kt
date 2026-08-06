@@ -36,6 +36,8 @@ class AccessibilityControlsTest {
         robot.resetDatabase()
         habitId = robot.seedHabit(name = "无障碍审计", iconKey = "book")
         scenario = ActivityScenario.launch(MainActivity::class.java)
+        robot.waitForTag("workbench_screen")
+        robot.navigateTo("日历")
         robot.waitForTag("calendar_screen")
     }
 
@@ -67,21 +69,27 @@ class AccessibilityControlsTest {
 
         robot.navigateTo("习惯")
         composeRule.onNodeWithText("无障碍审计").performClick()
-        assertAccessibleDescription("返回习惯列表")
+        assertAccessibleDescription("返回")
         assertAccessibleTag("habit_detail_previous_month", "上个月")
         assertAccessibleTag("habit_detail_next_month", "下个月")
 
         composeRule.onNodeWithTag("edit_habit").performScrollTo().performClick()
+        composeRule.onNodeWithTag("open_emoji_picker").performClick()
         mapOf(
-            "emoji_book" to "习惯图标：书本",
-            "emoji_sprout" to "习惯图标：幼苗",
-            "emoji_run" to "习惯图标：跑步",
-            "emoji_heart" to "习惯图标：爱心",
-            "emoji_water" to "习惯图标：喝水",
-            "emoji_star" to "习惯图标：星星",
-        ).forEach { (tag, description) ->
-            assertAccessibleTag(tag, description)
-        }
+            "emoji_emoji:📚" to "习惯图标：读书",
+            "emoji_emoji:🧪" to "习惯图标：实验",
+        ).forEach { (tag, description) -> assertAccessibleTag(tag, description) }
+        composeRule.onNodeWithTag("emoji_category_sport").performScrollTo().performClick()
+        assertAccessibleTag("emoji_emoji:🏃", "习惯图标：跑步")
+        composeRule.onNodeWithTag("emoji_category_daily").performScrollTo().performClick()
+        assertAccessibleTag("emoji_emoji:🌱", "习惯图标：早起")
+        composeRule.onNodeWithTag("emoji_category_health").performScrollTo().performClick()
+        assertAccessibleTag("emoji_emoji:💛", "习惯图标：心情")
+        composeRule.onNodeWithTag("emoji_category_food").performScrollTo().performClick()
+        assertAccessibleTag("emoji_emoji:💧", "习惯图标：喝水")
+        composeRule.onNodeWithTag("emoji_category_hobby").performScrollTo().performClick()
+        assertAccessibleTag("emoji_emoji:⭐", "习惯图标：收藏")
+        composeRule.onNodeWithText("关闭").performClick()
         mapOf(
             "habit_color_sky" to "习惯颜色：天蓝",
             "habit_color_rose" to "习惯颜色：柔粉",
