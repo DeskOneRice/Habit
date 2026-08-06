@@ -119,5 +119,5 @@ private fun MealRecordCard(record: MealRecord, onOpen: (Long) -> Unit, onRepeat:
 }
 
 private fun java.time.DayOfWeek.displayName() = listOf("一", "二", "三", "四", "五", "六", "日")[value - 1]
-private fun MealType?.label() = when (this) { MealType.BREAKFAST -> "早餐"; MealType.LUNCH -> "午餐"; MealType.DINNER -> "晚餐"; MealType.SNACK -> "加餐"; null -> "饮品" }
+private fun MealType?.label() = when (this) { MealType.BREAKFAST -> "早餐"; MealType.LUNCH -> "午餐"; MealType.DINNER -> "晚餐"; MealType.LATE_NIGHT -> "夜宵"; MealType.SNACK -> "加餐"; null -> "饮品" }
 private fun mealEmoji(type: MealType?) = when (type) { MealType.BREAKFAST -> "🥣"; MealType.LUNCH -> "🍱"; MealType.DINNER -> "🍲"; else -> "🍎" }

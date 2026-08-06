@@ -20,9 +20,11 @@ import androidx.compose.ui.unit.dp
 import android.graphics.BitmapFactory
 import com.habit.app.data.photos.CameraPhotoTarget
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealType
+import com.habit.app.domain.model.mealTypeDisplayOrder
+import com.habit.app.ui.components.CategoryChipFlow
+import com.habit.app.ui.components.CategoryChipItem
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
 import java.time.Instant
@@ -37,6 +39,7 @@ fun DietEditorScreen(
     isEditing: Boolean,
     onBack: () -> Unit,
     onSaved: () -> Unit,
+    onManageCategories: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showDelete by remember { mutableStateOf(false) }
@@ -46,6 +49,8 @@ fun DietEditorScreen(
     var showSaveTemplate by remember { mutableStateOf(false) }
     var templateName by remember { mutableStateOf("") }
     var templateWithPhotos by remember { mutableStateOf(false) }
+    var showCreateCategory by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
     var cameraTarget by remember { mutableStateOf<CameraPhotoTarget?>(null) }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
         viewModel.importPhotos(it)
@@ -63,21 +68,29 @@ fun DietEditorScreen(
         },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp).testTag("diet_editor"),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(18.dp).testTag("diet_editor"),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (isEditing) {
                 AssistChip(
                     onClick = {},
                     enabled = false,
-                    label = { Text(if (state.recordType == DietRecordType.MEAL) "正餐 / 加餐" else "饮品") },
+                    label = { Text(if (state.recordType == DietRecordType.MEAL) "餐食" else "饮品") },
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(state.recordType == DietRecordType.MEAL, { viewModel.update { copy(recordType = DietRecordType.MEAL) } }, { Text("正餐 / 加餐") })
+                    FilterChip(state.recordType == DietRecordType.MEAL, { viewModel.update { copy(recordType = DietRecordType.MEAL) } }, { Text("餐食") })
                     FilterChip(state.recordType == DietRecordType.BEVERAGE, { viewModel.update { copy(recordType = DietRecordType.BEVERAGE) } }, { Text("饮品") })
                 }
             }
+            Text(if (state.recordType == DietRecordType.MEAL) "餐食分类" else "饮品分类", style = MaterialTheme.typography.titleMedium)
+            CategoryChipFlow(
+                items = state.dietCategories.map { CategoryChipItem(it.id, it.name) },
+                selectedId = state.dietCategoryId,
+                onSelected = viewModel::selectDietCategory,
+                onCreate = { showCreateCategory = true },
+                onManage = onManageCategories,
+            )
             Text("发生时间", style = MaterialTheme.typography.titleMedium)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
@@ -114,7 +127,7 @@ fun DietEditorScreen(
             OutlinedTextField(
                 value = state.finalCaloriesText,
                 onValueChange = { value -> viewModel.update { copy(finalCaloriesText = value.filter(Char::isDigit)) } },
-                label = { Text("整餐总热量（可选，kcal）") },
+                label = { Text("本次总热量（可选，kcal）") },
                 modifier = Modifier.fillMaxWidth().testTag("diet_final_calories"),
             )
             OutlinedTextField(
@@ -243,6 +256,32 @@ fun DietEditorScreen(
             dismissButton = { TextButton(onClick = { showSaveTemplate = false }) { Text("取消") } },
         )
     }
+    if (showCreateCategory) {
+        AlertDialog(
+            onDismissRequest = { showCreateCategory = false },
+            title = { Text("新建${if (state.recordType == DietRecordType.MEAL) "餐食" else "饮品"}分类") },
+            text = {
+                OutlinedTextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("分类名称") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.createDietCategory(newCategoryName) {
+                            newCategoryName = ""
+                            showCreateCategory = false
+                        }
+                    },
+                    enabled = newCategoryName.isNotBlank(),
+                ) { Text("保存") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateCategory = false }) { Text("取消") } },
+        )
+    }
 }
 
 @Composable
@@ -273,10 +312,15 @@ private fun DietPhotoThumbnail(path: String?, onRemove: () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun MealFields(state: DietEditorUiState, viewModel: DietEditorViewModel) {
     Text("餐次", style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MealType.entries.forEach { type ->
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        mealTypeDisplayOrder.forEach { type ->
             FilterChip(state.mealType == type, { viewModel.update { copy(mealType = type) } }, { Text(type.cn()) })
         }
     }
@@ -301,12 +345,6 @@ private fun MealFields(state: DietEditorUiState, viewModel: DietEditorViewModel)
 
 @Composable
 private fun BeverageFields(state: DietEditorUiState, viewModel: DietEditorViewModel) {
-    Text("饮品分类", style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        BeverageCategory.entries.take(4).forEach { category ->
-            FilterChip(state.beverageCategory == category, { viewModel.update { copy(beverageCategory = category) } }, { Text(category.cn()) })
-        }
-    }
     DietField(state.beverageName, "饮品名称 *", "diet_beverage_name") { viewModel.update { copy(beverageName = it) } }
     DietField(state.brandOrStore, "品牌 / 门店") { viewModel.update { copy(brandOrStore = it) } }
     DietField(state.sizeOrVolume, "杯型 / 容量") { viewModel.update { copy(sizeOrVolume = it) } }
@@ -322,5 +360,10 @@ private fun DietField(value: String, label: String, tag: String? = null, onChang
     OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth().then(if (tag == null) Modifier else Modifier.testTag(tag)))
 }
 
-private fun MealType.cn() = when (this) { MealType.BREAKFAST -> "早餐"; MealType.LUNCH -> "午餐"; MealType.DINNER -> "晚餐"; MealType.SNACK -> "加餐" }
-private fun BeverageCategory.cn() = when (this) { BeverageCategory.COFFEE -> "咖啡"; BeverageCategory.MILK_TEA -> "奶茶"; BeverageCategory.TEA -> "茶"; BeverageCategory.FRUIT_DRINK -> "果饮"; BeverageCategory.DAIRY -> "乳饮"; BeverageCategory.OTHER -> "其他" }
+private fun MealType.cn() = when (this) {
+    MealType.BREAKFAST -> "早餐"
+    MealType.LUNCH -> "午餐"
+    MealType.DINNER -> "晚餐"
+    MealType.LATE_NIGHT -> "夜宵"
+    MealType.SNACK -> "加餐"
+}

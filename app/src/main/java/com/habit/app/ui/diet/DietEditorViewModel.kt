@@ -14,7 +14,10 @@ import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.model.DietTemplateDraft
+import com.habit.app.domain.model.DietCategory
+import com.habit.app.domain.model.DietCategoryScope
 import com.habit.app.domain.model.toRepeatDraft
+import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.stats.calculateCalories
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 data class DietEditorUiState(
@@ -51,6 +55,8 @@ data class DietEditorUiState(
     val cupCountText: String = "1",
     val note: String = "",
     val photos: List<DietPhoto> = emptyList(),
+    val dietCategories: List<DietCategory> = emptyList(),
+    val dietCategoryId: Long = 0,
     val isSaving: Boolean = false,
     val message: String? = null,
 )
@@ -82,7 +88,10 @@ class DietEditorViewModel(
     private val repeatRecordId: Long? = null,
     private val templateId: Long? = null,
     private val templateRepository: DietTemplateRepository? = null,
+    private val dietCategoryRepository: DietCategoryRepository,
 ) : ViewModel() {
+    private var mealCategories: List<DietCategory> = emptyList()
+    private var beverageCategories: List<DietCategory> = emptyList()
     private val now = Instant.now(clock).atZone(dateProvider.zoneId)
     private val mutableState = MutableStateFlow(
         DietEditorUiState(
@@ -94,6 +103,18 @@ class DietEditorViewModel(
     val state: StateFlow<DietEditorUiState> = mutableState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            dietCategoryRepository.observeAll(DietCategoryScope.MEAL).collectLatest {
+                mealCategories = it
+                refreshCategoryChoices()
+            }
+        }
+        viewModelScope.launch {
+            dietCategoryRepository.observeAll(DietCategoryScope.BEVERAGE).collectLatest {
+                beverageCategories = it
+                refreshCategoryChoices()
+            }
+        }
         if (recordId != null) viewModelScope.launch {
             repository.observeRecord(recordId).filterNotNull().first().let { record ->
                 val occurred = Instant.ofEpochMilli(record.occurredAt).atZone(dateProvider.zoneId)
@@ -117,7 +138,9 @@ class DietEditorViewModel(
                     cupCountText = drink?.cupCount?.toString() ?: "1",
                     note = record.note,
                     photos = record.photos,
+                    dietCategoryId = record.dietCategoryId,
                 )
+                refreshCategoryChoices()
             }
         } else if (repeatRecordId != null) viewModelScope.launch {
             val source = repository.observeRecord(repeatRecordId).filterNotNull().first()
@@ -149,11 +172,66 @@ class DietEditorViewModel(
             cupCountText = drink?.cupCount?.toString() ?: "1",
             note = draft.note,
             photos = draft.photos,
+            dietCategoryId = draft.dietCategoryId,
         )
+        refreshCategoryChoices()
     }
 
     fun update(block: DietEditorUiState.() -> DietEditorUiState) {
+        val previousType = mutableState.value.recordType
         mutableState.value = mutableState.value.block().copy(message = null)
+        if (previousType != mutableState.value.recordType) refreshCategoryChoices()
+    }
+
+    fun selectDietCategory(id: Long) {
+        val category = (mealCategories + beverageCategories).firstOrNull { it.id == id } ?: return
+        if (category.scope != currentCategoryScope()) return
+        mutableState.value = mutableState.value.copy(
+            dietCategoryId = id,
+            beverageCategory = legacyBeverageCategory(id),
+            message = null,
+        )
+        refreshCategoryChoices()
+    }
+
+    fun createDietCategory(name: String, onCreated: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val id = dietCategoryRepository.create(currentCategoryScope(), name)
+                mutableState.value = mutableState.value.copy(dietCategoryId = id, message = null)
+                onCreated()
+            } catch (error: Exception) {
+                mutableState.value = mutableState.value.copy(message = error.message ?: "无法创建分类")
+            }
+        }
+    }
+
+    private fun currentCategoryScope(): DietCategoryScope =
+        if (mutableState.value.recordType == DietRecordType.BEVERAGE) DietCategoryScope.BEVERAGE else DietCategoryScope.MEAL
+
+    private fun refreshCategoryChoices() {
+        val scope = currentCategoryScope()
+        val all = if (scope == DietCategoryScope.MEAL) mealCategories else beverageCategories
+        val currentId = mutableState.value.dietCategoryId
+        val choices = all.filter { !it.isHidden || it.id == currentId }
+        val currentIsValid = all.any { it.id == currentId && it.scope == scope }
+        val preferredId = if (scope == DietCategoryScope.MEAL) 4L else 5L
+        val selectedId = if (currentIsValid) currentId else
+            choices.firstOrNull { it.id == preferredId }?.id ?: choices.firstOrNull()?.id ?: 0L
+        mutableState.value = mutableState.value.copy(
+            dietCategories = choices,
+            dietCategoryId = selectedId,
+            beverageCategory = if (scope == DietCategoryScope.BEVERAGE) legacyBeverageCategory(selectedId) else mutableState.value.beverageCategory,
+        )
+    }
+
+    private fun legacyBeverageCategory(id: Long): BeverageCategory = when (id) {
+        5L -> BeverageCategory.COFFEE
+        6L -> BeverageCategory.MILK_TEA
+        7L -> BeverageCategory.TEA
+        8L -> BeverageCategory.FRUIT_DRINK
+        9L -> BeverageCategory.DAIRY
+        else -> BeverageCategory.OTHER
     }
 
     fun addFoodItem() = update { copy(foodItems = foodItems + FoodItemDraft("", null, null)) }
@@ -236,6 +314,7 @@ class DietEditorViewModel(
             mutableState.value = mutableState.value.copy(isSaving = true, message = null)
             try {
                 val current = mutableState.value
+                require(current.dietCategoryId > 0) { "请选择分类" }
                 val committedPhotos = photoStore?.commit(current.photos) ?: current.photos
                 val occurredAt = current.date.atTime(current.time).atZone(dateProvider.zoneId).toInstant().toEpochMilli()
                 val manual = current.finalCaloriesText.toIntOrNull()
@@ -264,6 +343,7 @@ class DietEditorViewModel(
                         beverage,
                         current.note,
                         committedPhotos,
+                        current.dietCategoryId,
                     ),
                 )
                 photoStore?.removeOrphans(repository.referencedPhotoPaths())
@@ -321,6 +401,7 @@ class DietEditorViewModel(
             beverage,
             current.note,
             photos,
+            current.dietCategoryId,
         )
     }
 

@@ -2,7 +2,15 @@ package com.habit.app.domain.model
 
 enum class DietRecordType { MEAL, BEVERAGE }
 
-enum class MealType { BREAKFAST, LUNCH, DINNER, SNACK }
+enum class MealType { BREAKFAST, LUNCH, DINNER, LATE_NIGHT, SNACK }
+
+val mealTypeDisplayOrder = listOf(
+    MealType.BREAKFAST,
+    MealType.LUNCH,
+    MealType.DINNER,
+    MealType.LATE_NIGHT,
+    MealType.SNACK,
+)
 
 enum class CalorieSource { NONE, ITEM_SUM, MANUAL, AI_ESTIMATE }
 
@@ -107,6 +115,7 @@ fun MealRecord.toRepeatDraft(nowMillis: Long, epochDay: Long): MealRecordDraft =
     beverage = beverage,
     note = note,
     photos = emptyList(),
+    dietCategoryId = dietCategoryId,
 )
 
 data class CalorieCalculation(

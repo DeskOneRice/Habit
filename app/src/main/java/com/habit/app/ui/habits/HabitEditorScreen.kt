@@ -22,11 +22,22 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.components.CategoryChipFlow
+import com.habit.app.ui.components.CategoryChipItem
 
 private val startDateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日")
 
 @Composable
-fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepository, emojiPreferences: EmojiPreferencesRepository, onSaved: () -> Unit, onBack: () -> Unit, onArchive: (Long) -> Unit, onDelete: (Long) -> Unit) {
+fun HabitEditorScreen(
+    viewModel: HabitEditorViewModel,
+    categories: CategoryRepository,
+    emojiPreferences: EmojiPreferencesRepository,
+    onSaved: () -> Unit,
+    onBack: () -> Unit,
+    onArchive: (Long) -> Unit,
+    onDelete: (Long) -> Unit,
+    onManageCategories: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val errorRequester = remember { BringIntoViewRequester() }
@@ -46,12 +57,21 @@ fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepos
             )
         },
         bottomBar = {
-            Button(
-                onClick = { viewModel.save(onSaved) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 20.dp).testTag("save_habit"),
-                enabled = !state.saving,
-            ) {
-                Text(if (state.saving) "保存中…" else "保存")
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp),
+                ) {
+                    Button(
+                        onClick = { viewModel.save(onSaved) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("save_habit"),
+                        enabled = !state.saving,
+                    ) {
+                        Text(if (state.saving) "保存中…" else "保存")
+                    }
+                }
             }
         },
     ) { contentPadding ->
@@ -61,7 +81,12 @@ fun HabitEditorScreen(viewModel: HabitEditorViewModel, categories: CategoryRepos
         Text("选择图标"); EmojiPicker(state.iconKey, recentEmojiKeys) { key -> viewModel.onEmojiChange(key); scope.launch { emojiPreferences.record(key) } }
         Text("识别颜色"); HabitColorPicker(state.themeColor, viewModel::onColorChange)
         Text("分类")
-        groups.forEach { category -> FilterChip(selected = state.categoryId == category.id, onClick = { viewModel.onCategoryChange(category.id) }, label = { Text(category.name) }) }
+        CategoryChipFlow(
+            items = groups.map { CategoryChipItem(it.id, it.name) },
+            selectedId = state.categoryId,
+            onSelected = viewModel::onCategoryChange,
+            onManage = onManageCategories,
+        )
         Text("开始日期：${LocalDate.ofEpochDay(state.startEpochDay).format(startDateFormatter)}")
         OutlinedButton(
             onClick = { showStartDatePicker = true },

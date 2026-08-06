@@ -134,6 +134,9 @@ fun HabitNavHost(
                 onDelete = { id ->
                     model.delete(id) { navController.returnToHabits() }
                 },
+                onManageCategories = {
+                    navController.navigate(HabitDestination.Categories.route)
+                },
             )
         }
         composable(
@@ -213,6 +216,7 @@ fun HabitNavHost(
                 isEditing = recordId != null,
                 onBack = { navController.popBackStack() },
                 onSaved = { navController.popBackStack() },
+                onManageCategories = { navController.navigate(HabitDestination.Categories.route) },
             )
         }
         composable(HabitDestination.DietStats.route) {
@@ -334,6 +338,7 @@ private class DietEditorFactory(
             repeatRecordId = repeatId,
             templateId = templateId,
             templateRepository = container.dietTemplateRepository,
+            dietCategoryRepository = container.dietCategoryRepository,
         ) as T
 }
 

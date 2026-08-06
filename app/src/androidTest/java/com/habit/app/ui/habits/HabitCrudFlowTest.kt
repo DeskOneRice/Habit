@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -20,6 +21,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
 import org.junit.Before
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +130,27 @@ class HabitCrudFlowTest {
 
         composeRule.onNodeWithTag("habit_color_rose").performClick()
         composeRule.onNodeWithTag("habit_color_rose").assertIsSelected()
+    }
+
+    @Test
+    fun categoryChipsUseHorizontalSpaceBeforeWrapping() {
+        composeRule.onNodeWithTag("welcome_create").performClick()
+
+        val first = composeRule.onNodeWithTag("category_chip_1").fetchSemanticsNode().boundsInRoot
+        val second = composeRule.onNodeWithTag("category_chip_2").fetchSemanticsNode().boundsInRoot
+
+        assertTrue(second.left > first.left)
+        assertTrue(kotlin.math.abs(second.center.y - first.center.y) < 2f)
+    }
+
+    @Test
+    fun saveButtonKeepsBreathingRoomAboveScreenBottom() {
+        composeRule.onNodeWithTag("welcome_create").performClick()
+
+        val root = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        val save = composeRule.onNodeWithTag("save_habit").fetchSemanticsNode().boundsInRoot
+
+        assertTrue(root.bottom - save.bottom > 8f)
     }
 
     @Test
