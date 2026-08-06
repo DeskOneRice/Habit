@@ -4,6 +4,7 @@ import com.habit.app.testHabit
 import com.habit.app.ui.welcome.FirstRunDestination
 import com.habit.app.ui.welcome.firstRunDestinationFor
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class NavigationPolicyTest {
@@ -43,5 +44,11 @@ class NavigationPolicyTest {
     fun drawerNavigationAlwaysReturnsToModuleRoot() {
         assertEquals(false, drawerNavigationPolicy.saveState)
         assertEquals(false, drawerNavigationPolicy.restoreState)
+    }
+
+    @Test
+    fun dietDetailRouteIsDistinctFromEditorRoute() {
+        assertEquals("diet/42", HabitDestination.DietDetail.route(42))
+        assertNotEquals(HabitDestination.DietEditor.route(42), HabitDestination.DietDetail.route(42))
     }
 }

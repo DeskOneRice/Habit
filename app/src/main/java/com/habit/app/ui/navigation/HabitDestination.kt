@@ -16,6 +16,10 @@ sealed interface HabitDestination {
     data object Categories : HabitDestination { override val route = "categories" }
     data object DrawerCategories : HabitDestination { override val route = "categories_drawer" }
     data object DietDiary : HabitDestination { override val route = "diet" }
+    data object DietDetail : HabitDestination {
+        override val route = "diet/{recordId}"
+        fun route(id: Long) = "diet/$id"
+    }
     data object DietEditor : HabitDestination {
         override val route = "diet_editor?recordId={recordId}&repeatId={repeatId}&templateId={templateId}"
         fun route(id: Long? = null) = if (id == null) "diet_editor" else "diet_editor?recordId=$id"

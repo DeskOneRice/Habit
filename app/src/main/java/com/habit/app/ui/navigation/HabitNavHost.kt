@@ -26,6 +26,8 @@ import com.habit.app.ui.settings.SettingsScreen
 import com.habit.app.ui.settings.SettingsViewModel
 import com.habit.app.ui.diet.DietDiaryScreen
 import com.habit.app.ui.diet.DietDiaryViewModel
+import com.habit.app.ui.diet.DietRecordDetailScreen
+import com.habit.app.ui.diet.DietRecordDetailViewModel
 import com.habit.app.ui.diet.DietEditorScreen
 import com.habit.app.ui.diet.DietEditorViewModel
 import com.habit.app.ui.diet.DietTemplateScreen
@@ -190,8 +192,21 @@ fun HabitNavHost(
                 photoStore = container.dietPhotoStore,
                 onOpenDrawer = onOpenDrawer,
                 onAdd = { navController.navigate(HabitDestination.DietEditor.route()) },
-                onOpenRecord = { navController.navigate(HabitDestination.DietEditor.route(it)) },
+                onOpenRecord = { navController.navigate(HabitDestination.DietDetail.route(it)) },
                 onRepeatRecord = { navController.navigate(HabitDestination.DietEditor.repeatRoute(it)) },
+            )
+        }
+        composable(
+            route = HabitDestination.DietDetail.route,
+            arguments = listOf(navArgument("recordId") { type = NavType.LongType }),
+        ) { entry ->
+            val recordId = requireNotNull(entry.arguments?.getLong("recordId"))
+            DietRecordDetailScreen(
+                viewModel = viewModel(factory = DietRecordDetailFactory(container, recordId)),
+                photoStore = container.dietPhotoStore,
+                onBack = { navController.popBackStack() },
+                onEdit = { navController.navigate(HabitDestination.DietEditor.route(it)) },
+                onRepeat = { navController.navigate(HabitDestination.DietEditor.repeatRoute(it)) },
             )
         }
         composable(HabitDestination.DietTemplates.route) {
@@ -340,6 +355,19 @@ private class DietEditorFactory(
             templateId = templateId,
             templateRepository = container.dietTemplateRepository,
             dietCategoryRepository = container.dietCategoryRepository,
+        ) as T
+}
+
+private class DietRecordDetailFactory(
+    private val container: AppContainer,
+    private val recordId: Long,
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        DietRecordDetailViewModel(
+            recordId = recordId,
+            repository = container.dietRepository,
+            categoryRepository = container.dietCategoryRepository,
         ) as T
 }
 
