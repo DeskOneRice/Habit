@@ -205,7 +205,7 @@ private fun RecentWeekCard(days: List<RecentDay>, today: java.time.LocalDate, on
     HabitCard(Modifier.fillMaxWidth().testTag("recent_week_strip")) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("最近 7 天", style = MaterialTheme.typography.titleMedium)
-            TextButton(onOpenCalendar) { Text("打开月历") }
+            TextButton(onOpenCalendar) { Text("打开日历") }
         }
         RecentWeekTimeline(days = days, today = today)
     }

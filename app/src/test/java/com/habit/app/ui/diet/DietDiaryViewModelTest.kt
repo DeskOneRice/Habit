@@ -47,12 +47,13 @@ class DietDiaryViewModelTest {
     }
 
     @Test
-    fun recentModeGroupsDatesDescendingAndTimesAscending() = TestScope(dispatcher).runTest {
+    fun recentModeGroupsDatesAndTimesDescendingWithIdTieBreak() = TestScope(dispatcher).runTest {
         val repository = FakeDietRepository()
         repository.records.value = listOf(
             record(id = 1, day = 2, time = 20),
             record(id = 2, day = 3, time = 18),
             record(id = 3, day = 3, time = 8),
+            record(id = 4, day = 3, time = 18),
         )
 
         val vm = DietDiaryViewModel(repository, FixedDiaryDateProvider)
@@ -60,7 +61,11 @@ class DietDiaryViewModelTest {
 
         assertEquals(DietDiaryMode.RECENT, vm.state.value.mode)
         assertEquals(listOf(3L, 2L), vm.state.value.recentGroups.map { it.epochDay })
-        assertEquals(listOf(8L, 18L), vm.state.value.recentGroups.first().records.map { it.occurredAt })
+        assertEquals(listOf(4L, 2L, 3L), vm.state.value.recentGroups.first().records.map { it.id })
+
+        vm.selectDate(LocalDate.ofEpochDay(3))
+        advanceUntilIdle()
+        assertEquals(listOf(4L, 2L, 3L), vm.state.value.records.map { it.id })
     }
 
     private fun record(id: Long, day: Long, time: Long) = MealRecord(

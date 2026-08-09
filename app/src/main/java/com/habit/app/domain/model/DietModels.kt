@@ -126,15 +126,24 @@ data class CalorieCalculation(
 
 data class RankedValue(val label: String, val count: Int)
 
+data class DietDailyTotal(
+    val epochDay: Long,
+    val recordCount: Int,
+    val totalCalories: Int?,
+)
+
 data class DietRangeSummary(
     val startEpochDay: Long,
     val endEpochDay: Long,
     val recordCount: Int,
     val recordedDays: Int,
+    val mealRecordCount: Int,
+    val beverageRecordCount: Int,
     val totalCalories: Int?,
     val beverageCups: Int,
     val categoryRanking: List<RankedValue>,
     val brandRanking: List<RankedValue>,
     val sweetnessRanking: List<RankedValue>,
-    val iceRanking: List<RankedValue>,
+    val temperatureRanking: List<RankedValue>,
+    val dailyTotals: List<DietDailyTotal>,
 )

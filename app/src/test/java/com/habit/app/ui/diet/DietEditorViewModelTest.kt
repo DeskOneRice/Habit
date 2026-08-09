@@ -8,6 +8,7 @@ import java.time.ZoneId
 import com.habit.app.domain.model.DietCategory
 import com.habit.app.domain.model.DietCategoryScope
 import com.habit.app.domain.model.DietPhoto
+import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
@@ -62,6 +63,33 @@ class DietEditorViewModelTest {
         advanceUntilIdle()
 
         assertEquals(3L, repository.lastSaved?.dietCategoryId)
+    }
+
+    @Test
+    fun savingBeverageUsesOneTemperatureFieldAndClearsLegacyIceLevel() = runTest(dispatcher) {
+        val repository = RecordingDietRepository()
+        val viewModel = DietEditorViewModel(
+            recordId = null,
+            repository = repository,
+            dateProvider = FixedDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-03T04:00:00Z"), ZoneId.of("UTC")),
+            dietCategoryRepository = FakeDietCategoryRepository(),
+        )
+        advanceUntilIdle()
+
+        viewModel.update {
+            copy(
+                recordType = DietRecordType.BEVERAGE,
+                beverageName = "奶茶",
+                temperature = "正常冰",
+            )
+        }
+        advanceUntilIdle()
+        viewModel.save {}
+        advanceUntilIdle()
+
+        assertEquals("正常冰", repository.lastSaved?.beverage?.temperature)
+        assertEquals("", repository.lastSaved?.beverage?.iceLevel)
     }
 
     @Test

@@ -3,8 +3,12 @@ package com.habit.app.ui.calendar
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -26,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.ui.components.DeviceDateRefreshEffect
 import com.habit.app.ui.components.ArrowDirection
 import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.LightweightArrowButton
 import com.habit.app.ui.components.NavigationMode
 import java.time.LocalDate
@@ -115,15 +120,34 @@ private fun MonthSummary(
     completionRate: Float,
     longestStreak: Int,
 ) {
-    Column(
+    HabitCard(
         Modifier
             .fillMaxWidth()
-            .testTag("calendar_summary")
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 14.dp)
+            .testTag("calendar_summary"),
     ) {
-        Text("本月活跃 $activeDays 天")
-        Text("本月完成率 ${(completionRate * 100).roundToInt()}%")
-        Text("本月最长连续打卡 $longestStreak 天")
+        Text("本月概览", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(14.dp))
+        val metrics = listOf(
+            "$activeDays" to "活跃天数",
+            "${(completionRate * 100).roundToInt()}%" to "完成率",
+            "$longestStreak" to "最长连续",
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            metrics.forEachIndexed { index, metric ->
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(metric.first, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(metric.second, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (index < metrics.lastIndex) {
+                    androidx.compose.material3.VerticalDivider(Modifier.height(38.dp))
+                }
+            }
+        }
     }
 }
 

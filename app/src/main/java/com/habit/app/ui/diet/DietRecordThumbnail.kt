@@ -3,6 +3,7 @@ package com.habit.app.ui.diet
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,12 +23,14 @@ import com.habit.app.data.photos.DietPhotoStore
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealType
+import java.io.File
 
 @Composable
 fun DietRecordThumbnail(
     record: MealRecord,
     photoStore: DietPhotoStore,
     modifier: Modifier = Modifier,
+    onPhotoClick: ((File) -> Unit)? = null,
 ) {
     val firstPhoto = record.photos.minByOrNull { it.sortOrder }
     val photoFile = remember(firstPhoto?.relativePath, photoStore) {
@@ -45,6 +48,13 @@ fun DietRecordThumbnail(
         modifier = modifier
             .size(72.dp)
             .clip(shape)
+            .then(
+                if (bitmap != null && photoFile != null && onPhotoClick != null) {
+                    Modifier.clickable { onPhotoClick(photoFile) }
+                } else {
+                    Modifier
+                },
+            )
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

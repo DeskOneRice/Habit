@@ -17,6 +17,7 @@ import com.habit.app.domain.model.DietTemplateDraft
 import com.habit.app.domain.model.DietCategory
 import com.habit.app.domain.model.DietCategoryScope
 import com.habit.app.domain.model.toRepeatDraft
+import com.habit.app.domain.model.displayTemperature
 import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.repository.DietTemplateRepository
@@ -49,7 +50,6 @@ data class DietEditorUiState(
     val beverageName: String = "",
     val sizeOrVolume: String = "",
     val temperature: String = "",
-    val iceLevel: String = "",
     val sweetness: String = "",
     val toppings: String = "",
     val cupCountText: String = "1",
@@ -131,8 +131,7 @@ class DietEditorViewModel(
                     brandOrStore = drink?.brandOrStore.orEmpty(),
                     beverageName = drink?.beverageName.orEmpty(),
                     sizeOrVolume = drink?.sizeOrVolume.orEmpty(),
-                    temperature = drink?.temperature.orEmpty(),
-                    iceLevel = drink?.iceLevel.orEmpty(),
+                    temperature = drink?.displayTemperature().orEmpty(),
                     sweetness = drink?.sweetness.orEmpty(),
                     toppings = drink?.toppings?.joinToString("、").orEmpty(),
                     cupCountText = drink?.cupCount?.toString() ?: "1",
@@ -165,8 +164,7 @@ class DietEditorViewModel(
             brandOrStore = drink?.brandOrStore.orEmpty(),
             beverageName = drink?.beverageName.orEmpty(),
             sizeOrVolume = drink?.sizeOrVolume.orEmpty(),
-            temperature = drink?.temperature.orEmpty(),
-            iceLevel = drink?.iceLevel.orEmpty(),
+            temperature = drink?.displayTemperature().orEmpty(),
             sweetness = drink?.sweetness.orEmpty(),
             toppings = drink?.toppings?.joinToString("、").orEmpty(),
             cupCountText = drink?.cupCount?.toString() ?: "1",
@@ -325,7 +323,7 @@ class DietEditorViewModel(
                     current.beverageName,
                     current.sizeOrVolume,
                     current.temperature,
-                    current.iceLevel,
+                    "",
                     current.sweetness,
                     current.toppings.split('、', ',', '，').map(String::trim).filter(String::isNotBlank),
                     current.cupCountText.toIntOrNull() ?: 0,
@@ -385,7 +383,7 @@ class DietEditorViewModel(
             current.beverageName,
             current.sizeOrVolume,
             current.temperature,
-            current.iceLevel,
+            "",
             current.sweetness,
             current.toppings.split('、', ',', '，').map(String::trim).filter(String::isNotBlank),
             current.cupCountText.toIntOrNull() ?: 0,

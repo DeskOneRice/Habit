@@ -15,8 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.Habit
 import com.habit.app.ui.components.HabitTopAppBar
-import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.components.HabitAddFab
 import com.habit.app.ui.components.habitEmoji
 
 @Composable
@@ -24,7 +24,6 @@ fun HabitListScreen(
     viewModel: HabitListViewModel,
     onCreate: () -> Unit,
     onOpenDetail: (Long) -> Unit,
-    onCategories: () -> Unit,
     onOpenDrawer: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -36,23 +35,10 @@ fun HabitListScreen(
                 title = "我的习惯",
                 navigationMode = NavigationMode.MENU,
                 onNavigation = onOpenDrawer,
-            ) {
-                HabitTopAction(
-                    text = "分类",
-                    contentDescription = "管理分类",
-                    onClick = onCategories,
-                )
-            }
+            )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onCreate,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("create_habit"),
-                text = { Text("新建习惯") },
-                icon = { Text("＋") },
-            )
+            HabitAddFab(onClick = onCreate, testTag = "create_habit")
         },
     ) { contentPadding ->
         LazyColumn(

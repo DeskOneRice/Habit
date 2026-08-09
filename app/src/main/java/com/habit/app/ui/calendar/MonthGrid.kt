@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import com.habit.app.domain.model.CalendarMark
 import com.habit.app.domain.model.MonthSnapshot
 import com.habit.app.ui.components.habitEmoji
+import com.habit.app.ui.workbench.buildRecentWeekDisplay
 import java.time.DayOfWeek
 import java.time.LocalDate
 
@@ -86,6 +88,7 @@ private fun DayCell(
     modifier: Modifier = Modifier,
 ) {
     val sortedMarks = marks.sortedWith(compareBy(CalendarMark::sortOrder, CalendarMark::habitId))
+    val display = buildRecentWeekDisplay(sortedMarks.map(CalendarMark::iconKey))
     Column(
         modifier = modifier
             .height(56.dp)
@@ -100,31 +103,38 @@ private fun DayCell(
             style = MaterialTheme.typography.labelMedium,
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.wrapContentWidth().height(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            sortedMarks.take(4).forEachIndexed { index, mark ->
+            display.primaryEmoji?.let { iconKey ->
                 Text(
-                    text = habitEmoji(mark.iconKey),
+                    text = habitEmoji(iconKey),
                     fontSize = 9.sp,
                     lineHeight = 9.sp,
                     maxLines = 1,
                     softWrap = false,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("day_${date}_mark_$index"),
+                    modifier = Modifier.testTag("day_${date}_mark_0"),
                 )
             }
-        }
-        val overflow = (sortedMarks.size - 4).coerceAtLeast(0)
-        if (overflow > 0) {
-            Text(
-                text = "+$overflow",
-                fontSize = 9.sp,
-                lineHeight = 9.sp,
-                modifier = Modifier.testTag("day_${date}_overflow"),
-            )
+            display.secondaryEmoji?.let { iconKey ->
+                Text(
+                    text = habitEmoji(iconKey),
+                    fontSize = 9.sp,
+                    lineHeight = 9.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.testTag("day_${date}_mark_1"),
+                )
+            }
+            display.overflowCount?.let { overflow ->
+                Text(
+                    text = "+$overflow",
+                    fontSize = 9.sp,
+                    lineHeight = 9.sp,
+                    modifier = Modifier.testTag("day_${date}_overflow"),
+                )
+            }
         }
     }
 }

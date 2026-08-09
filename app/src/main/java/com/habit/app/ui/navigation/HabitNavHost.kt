@@ -91,9 +91,6 @@ fun HabitNavHost(
                 onOpenDetail = { habitId ->
                     navController.navigate(HabitDestination.HabitDetail.route(habitId))
                 },
-                onCategories = {
-                    navController.navigate(HabitDestination.Categories.route(CategorySection.HABIT.name))
-                },
                 onOpenDrawer = onOpenDrawer,
             )
         }
@@ -173,9 +170,6 @@ fun HabitNavHost(
         composable(HabitDestination.Settings.route) {
             SettingsScreen(
                 viewModel = viewModel(factory = SettingsFactory(container)),
-                onCategories = {
-                    navController.navigate(HabitDestination.Categories.route(CategorySection.HABIT.name))
-                },
                 onOpenDrawer = onOpenDrawer,
             )
         }
@@ -361,7 +355,11 @@ private class SettingsFactory(
 private class DietDiaryFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        DietDiaryViewModel(container.dietRepository, container.dateProvider) as T
+        DietDiaryViewModel(
+            container.dietRepository,
+            container.dateProvider,
+            container.dietCategoryRepository,
+        ) as T
 }
 
 private class DietEditorFactory(

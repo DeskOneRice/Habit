@@ -5,6 +5,9 @@ import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.runtime.mutableStateOf
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.data.photos.CameraPhotoTarget
 import com.habit.app.data.photos.DietPhotoStore
@@ -20,6 +23,7 @@ import kotlin.io.path.createTempDirectory
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Assert.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 class DietBrowseFlowTest {
@@ -62,6 +66,34 @@ class DietBrowseFlowTest {
         }
 
         composeRule.onNodeWithContentDescription("默认饮食图标").assertIsDisplayed()
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun validThumbnailOpensLargePhotoPreview() {
+        val root = createTempDirectory("diet_preview_").toFile()
+        val store = TestPhotoStore(root)
+        val image = store.file("library/meal.png").apply { parentFile?.mkdirs() }
+        image.outputStream().use { output ->
+            Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+                .compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        val previewFile = mutableStateOf<File?>(null)
+
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                DietRecordThumbnail(
+                    record(DietPhoto(relativePath = "library/meal.png", sortOrder = 0)),
+                    store,
+                    onPhotoClick = { previewFile.value = it },
+                )
+                previewFile.value?.let { file -> DietPhotoPreviewDialog(file) { previewFile.value = null } }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("饮食照片").performClick()
+        composeRule.onNodeWithTag("diet_photo_preview").assertIsDisplayed()
+        composeRule.runOnIdle { assertTrue(previewFile.value?.isFile == true) }
         root.deleteRecursively()
     }
 

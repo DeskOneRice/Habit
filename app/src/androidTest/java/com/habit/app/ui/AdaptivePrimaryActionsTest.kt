@@ -48,13 +48,13 @@ class AdaptivePrimaryActionsTest {
     }
 
     @Test
-    fun settingsPrimaryActionCanBeReachedOnShort360DpScreenAt130PercentFontScale() {
+    fun settingsBackupActionCanBeReachedOnShort360DpScreenAt130PercentFontScale() {
         val viewModel = SettingsViewModel(StaticThemeRepository())
         setShortScreenContent {
-            SettingsScreen(viewModel = viewModel, onCategories = {})
+            SettingsScreen(viewModel = viewModel)
         }
 
-        composeRule.onNodeWithTag("settings_categories")
+        composeRule.onNodeWithTag("export_data")
             .performScrollTo()
             .assertHeightIsAtLeast(48.dp)
             .assertIsDisplayed()

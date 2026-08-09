@@ -83,7 +83,7 @@ class AdaptiveDeviceConfigurationTest {
             robot.waitForTag("habit_list_screen")
 
             robot.navigateTo("设置")
-            assertPrimaryAction("settings_categories", scrollTo = true)
+            assertPrimaryAction("export_data", scrollTo = true)
         } finally {
             scenario?.close()
             restoreDisplayConfiguration(original)

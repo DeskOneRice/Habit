@@ -51,10 +51,8 @@ class ThemePersistenceTest {
     }
 
     @Test
-    fun categoryManagementIsReachableFromSettings() {
-        robot.navigateTo("设置")
-
-        composeRule.onNodeWithTag("settings_categories").performScrollTo().performClick()
+    fun categoryManagementIsReachableFromDrawer() {
+        robot.navigateTo("分类管理")
 
         robot.waitForTag("category_screen")
         composeRule.onNodeWithTag("category_screen").assertIsDisplayed()

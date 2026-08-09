@@ -10,7 +10,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.ui.components.HabitTopAppBar
-import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 
 @Composable
@@ -38,15 +37,7 @@ fun CategoryScreen(
                 title = "分类管理",
                 navigationMode = navigationMode,
                 onNavigation = onNavigation,
-            ) {
-                HabitTopAction(
-                    text = "＋",
-                    contentDescription = "新建分类",
-                    onClick = { create = true },
-                    modifier = Modifier.testTag("category_add"),
-                    textStyle = MaterialTheme.typography.titleLarge,
-                )
-            }
+            )
         },
     ) { contentPadding ->
         Column(
@@ -64,15 +55,15 @@ fun CategoryScreen(
                     FilterChip(
                         selected = state.section == section,
                         onClick = { selectSection(section) },
-                        label = { Text(section.label()) },
+                        label = {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Text(section.label(), style = MaterialTheme.typography.titleMedium)
+                            }
+                        },
                         modifier = Modifier.weight(1f).testTag("category_section_${section.name.lowercase()}"),
                     )
                 }
             }
-            OutlinedButton(
-                onClick = { create = true },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) { Text("新建分类") }
 
             CategoryGroup(
                 title = "正在使用",
@@ -83,6 +74,10 @@ fun CategoryScreen(
                     target = null
                 },
             )
+            OutlinedButton(
+                onClick = { create = true },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp).testTag("category_add"),
+            ) { Text("＋ 新建分类", style = MaterialTheme.typography.titleSmall) }
             CategoryGroup(
                 title = "已隐藏",
                 items = state.items.filter(ManagedCategoryItem::isHidden),

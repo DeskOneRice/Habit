@@ -67,10 +67,18 @@ class DietStatisticsTest {
         val summary = summarizeDiet(records, 10, 10)
 
         assertEquals(2, summary.recordCount)
+        assertEquals(1, summary.mealRecordCount)
+        assertEquals(1, summary.beverageRecordCount)
+        assertEquals(summary.recordCount, summary.mealRecordCount + summary.beverageRecordCount)
+        assertEquals(1, summary.recordedDays)
         assertEquals(600, summary.totalCalories)
         assertEquals(2, summary.beverageCups)
+        assertEquals("奶茶", summary.categoryRanking.single().label)
+        assertEquals("冷 · 少冰", summary.temperatureRanking.single().label)
         assertEquals("茶铺", summary.brandRanking.single().label)
         assertEquals(2, summary.brandRanking.single().count)
+        assertEquals(listOf(10L), summary.dailyTotals.map { it.epochDay })
+        assertEquals(2, summary.dailyTotals.single().recordCount)
     }
 
     private fun record(

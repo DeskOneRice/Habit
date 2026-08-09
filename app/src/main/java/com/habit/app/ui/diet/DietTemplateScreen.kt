@@ -44,7 +44,7 @@ fun DietTemplateScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item { TemplateGroupHeader("🍱 正餐 / 加餐", state.mealExpanded, viewModel::toggleMeal) }
+            item { TemplateGroupHeader("🍱 餐食", state.mealExpanded, viewModel::toggleMeal) }
             if (state.mealExpanded) state.mealTemplates.forEachIndexed { index, template ->
                 item(key = "meal_${template.id}") {
                     TemplateCard(template, index > 0, index < state.mealTemplates.lastIndex, onUseTemplate,

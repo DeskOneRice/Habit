@@ -1,12 +1,14 @@
 package com.habit.app.ui.diet
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -15,15 +17,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.data.photos.DietPhotoStore
 import com.habit.app.domain.model.MealRecord
-import com.habit.app.domain.model.MealType
+import com.habit.app.domain.model.displayTitle
+import com.habit.app.domain.model.displayType
 import com.habit.app.domain.time.HabitTimePolicy
 import com.habit.app.ui.components.HabitCard
+import com.habit.app.ui.components.HabitAddFab
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @Composable
 fun DietDiaryScreen(
@@ -35,73 +42,136 @@ fun DietDiaryScreen(
     onRepeatRecord: (Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = if (state.mode == DietDiaryMode.RECENT) 0 else 1,
+        pageCount = { 2 },
+    )
+    var previewFile by remember { mutableStateOf<File?>(null) }
+
+    LaunchedEffect(state.mode) {
+        val target = if (state.mode == DietDiaryMode.RECENT) 0 else 1
+        if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                viewModel.selectMode(if (page == 0) DietDiaryMode.RECENT else DietDiaryMode.DAY)
+            }
+    }
+
     Scaffold(
         topBar = { HabitTopAppBar("饮食日记", NavigationMode.MENU, onOpenDrawer) },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd, modifier = Modifier.testTag("diet_add")) { Text("＋") }
+            HabitAddFab(onClick = onAdd, testTag = "diet_add")
         },
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("diet_diary"),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "mode") {
-                DiaryModeSelector(state.mode, viewModel::selectMode)
-            }
-            if (state.mode == DietDiaryMode.RECENT) {
-                if (!state.isLoading && state.recentGroups.isEmpty()) {
-                    item(key = "recent_empty") {
-                        EmptyDiaryMessage("还没有饮食记录\n点右下角开始记一餐")
+            DiaryModeSelector(
+                mode = state.mode,
+                onSelected = { selected ->
+                    viewModel.selectMode(selected)
+                    scope.launch {
+                        pagerState.animateScrollToPage(if (selected == DietDiaryMode.RECENT) 0 else 1)
                     }
-                }
-                state.recentGroups.forEach { group ->
-                    item(key = "date_${group.epochDay}") {
-                        Text(
-                            LocalDate.ofEpochDay(group.epochDay).format(DATE_HEADER_FORMAT),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
+                },
+            )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.Top,
+            ) { page ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (page == 0) {
+                        if (!state.isLoading && state.recentGroups.isEmpty()) {
+                            item(key = "recent_empty") {
+                                EmptyDiaryMessage("还没有饮食记录\n点右下角开始记一餐")
+                            }
+                        }
+                        state.recentGroups.forEach { group ->
+                            item(key = "date_${group.epochDay}") {
+                                Text(
+                                    LocalDate.ofEpochDay(group.epochDay).format(DATE_HEADER_FORMAT),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                            items(group.records, key = { "recent_${it.id}" }) { record ->
+                                MealRecordCard(
+                                    record,
+                                    state.categoryNames[record.dietCategoryId].orEmpty(),
+                                    photoStore,
+                                    onOpenRecord,
+                                    onRepeatRecord,
+                                    onPhotoPreview = { previewFile = it },
+                                )
+                            }
+                        }
+                    } else {
+                        item(key = "week") {
+                            DiaryWeekSelector(state.selectedDate, viewModel::selectDate)
+                        }
+                        item(key = "summary") {
+                            DiaryDaySummary(state)
+                        }
+                        if (!state.isLoading && state.records.isEmpty()) {
+                            item(key = "day_empty") {
+                                EmptyDiaryMessage("今天还没有记录\n点右下角开始记一餐")
+                            }
+                        }
+                        items(state.records, key = { "day_${it.id}" }) { record ->
+                            MealRecordCard(
+                                record,
+                                state.categoryNames[record.dietCategoryId].orEmpty(),
+                                photoStore,
+                                onOpenRecord,
+                                onRepeatRecord,
+                                onPhotoPreview = { previewFile = it },
+                            )
+                        }
                     }
-                    items(group.records, key = { "recent_${it.id}" }) { record ->
-                        MealRecordCard(record, photoStore, onOpenRecord, onRepeatRecord)
-                    }
-                }
-            } else {
-                item(key = "week") {
-                    DiaryWeekSelector(state.selectedDate, viewModel::selectDate)
-                }
-                item(key = "summary") {
-                    DiaryDaySummary(state)
-                }
-                if (!state.isLoading && state.records.isEmpty()) {
-                    item(key = "day_empty") {
-                        EmptyDiaryMessage("今天还没有记录\n点右下角开始记一餐")
-                    }
-                }
-                items(state.records, key = { "day_${it.id}" }) { record ->
-                    MealRecordCard(record, photoStore, onOpenRecord, onRepeatRecord)
                 }
             }
         }
     }
+    previewFile?.let { file -> DietPhotoPreviewDialog(file) { previewFile = null } }
 }
 
 @Composable
 private fun DiaryModeSelector(mode: DietDiaryMode, onSelected: (DietDiaryMode) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = mode == DietDiaryMode.RECENT,
-            onClick = { onSelected(DietDiaryMode.RECENT) },
-            label = { Text("最近记录") },
-            modifier = Modifier.weight(1f).testTag("diet_mode_recent"),
-        )
-        FilterChip(
-            selected = mode == DietDiaryMode.DAY,
-            onClick = { onSelected(DietDiaryMode.DAY) },
-            label = { Text("按日查看") },
-            modifier = Modifier.weight(1f).testTag("diet_mode_day"),
-        )
+    Row(Modifier.fillMaxWidth().height(56.dp)) {
+        listOf(DietDiaryMode.RECENT to "最近记录", DietDiaryMode.DAY to "按日查看").forEach { (value, title) ->
+            val selected = mode == value
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable { onSelected(value) }
+                    .testTag(if (value == DietDiaryMode.RECENT) "diet_mode_recent" else "diet_mode_day"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom,
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(if (selected) 3.dp else 1.dp)
+                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                )
+            }
+        }
     }
 }
 
@@ -164,9 +234,11 @@ private fun EmptyDiaryMessage(text: String) {
 @Composable
 private fun MealRecordCard(
     record: MealRecord,
+    categoryName: String,
     photoStore: DietPhotoStore,
     onOpen: (Long) -> Unit,
     onRepeat: (Long) -> Unit,
+    onPhotoPreview: (File) -> Unit,
 ) {
     HabitCard(
         Modifier
@@ -175,12 +247,11 @@ private fun MealRecordCard(
             .testTag("diet_record_${record.id}"),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            DietRecordThumbnail(record, photoStore)
+            DietRecordThumbnail(record, photoStore, onPhotoClick = onPhotoPreview)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(record.beverage?.beverageName?.ifBlank { null } ?: record.mealType.label(), style = MaterialTheme.typography.titleMedium)
-                val description = record.description.ifBlank { record.foodItems.joinToString("、") { it.name } }
-                if (description.isNotBlank()) Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(record.displayTitle(), style = MaterialTheme.typography.titleMedium)
+                Text(record.displayType(categoryName), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     "${record.displayTime()} · ${record.finalCalories?.let { "$it kcal" } ?: "未记录热量"}",
                     style = MaterialTheme.typography.bodySmall,
@@ -200,13 +271,4 @@ private fun MealRecord.displayTime(): String = Instant.ofEpochMilli(occurredAt)
     .format(DateTimeFormatter.ofPattern("HH:mm"))
 
 private fun java.time.DayOfWeek.displayName() = listOf("一", "二", "三", "四", "五", "六", "日")[value - 1]
-private fun MealType?.label() = when (this) {
-    MealType.BREAKFAST -> "早餐"
-    MealType.LUNCH -> "午餐"
-    MealType.DINNER -> "晚餐"
-    MealType.LATE_NIGHT -> "夜宵"
-    MealType.SNACK -> "加餐"
-    null -> "饮品"
-}
-
 private val DATE_HEADER_FORMAT = DateTimeFormatter.ofPattern("M 月 d 日 EEEE", Locale.CHINA)

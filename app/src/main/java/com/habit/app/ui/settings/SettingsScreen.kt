@@ -40,7 +40,6 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onCategories: () -> Unit,
     onOpenDrawer: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -86,12 +85,6 @@ fun SettingsScreen(
                 Text("强调色会用于按钮、选中状态和进度。")
             }
         }
-        Text("分类", style = MaterialTheme.typography.titleLarge)
-        OutlinedButton(
-            onClick = onCategories,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("settings_categories"),
-        ) { Text("管理分类") }
-
         Text("本地数据", style = MaterialTheme.typography.titleLarge)
         Card(
             modifier = Modifier.fillMaxWidth().testTag("backup_card"),

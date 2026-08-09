@@ -114,13 +114,11 @@ class MonthGridLayoutTest {
         composeRule.onNodeWithTag("day_2031-03-03").assertIsDisplayed()
         composeRule.onNodeWithTag("day_2031-03-02").assertIsDisplayed()
 
-        listOf("📚", "🌱", "🏃", "💛").forEachIndexed { index, emoji ->
-            composeRule.onNodeWithTag("day_${markedDate}_mark_$index", useUnmergedTree = true)
-                .assertTextEquals(emoji)
-                .assertIsDisplayed()
-        }
+        composeRule.onNodeWithTag("day_${markedDate}_mark_0", useUnmergedTree = true)
+            .assertTextEquals("📚")
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("day_${markedDate}_overflow", useUnmergedTree = true)
-            .assertTextEquals("+1")
+            .assertTextEquals("+4")
             .assertIsDisplayed()
 
         val leftEdge = composeRule.onNodeWithTag("day_2031-03-03")

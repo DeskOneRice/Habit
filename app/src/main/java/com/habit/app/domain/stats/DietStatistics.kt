@@ -3,10 +3,14 @@ package com.habit.app.domain.stats
 import com.habit.app.domain.model.CalorieCalculation
 import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRangeSummary
+import com.habit.app.domain.model.DietDailyTotal
+import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.model.RankedValue
+import com.habit.app.domain.model.displayName
+import com.habit.app.domain.model.displayTemperature
 import java.time.LocalTime
 
 fun suggestMealType(time: LocalTime): MealType = when (time.hour) {
@@ -40,17 +44,29 @@ fun summarizeDiet(
     val included = records.filter { it.recordEpochDay in startEpochDay..endEpochDay }
     val calories = included.mapNotNull(MealRecord::finalCalories)
     val drinks = included.mapNotNull(MealRecord::beverage)
+    val dailyTotals = (startEpochDay..endEpochDay).map { epochDay ->
+        val dayRecords = included.filter { it.recordEpochDay == epochDay }
+        val dayCalories = dayRecords.mapNotNull(MealRecord::finalCalories)
+        DietDailyTotal(
+            epochDay = epochDay,
+            recordCount = dayRecords.size,
+            totalCalories = dayCalories.takeIf(List<Int>::isNotEmpty)?.sum(),
+        )
+    }
     return DietRangeSummary(
         startEpochDay = startEpochDay,
         endEpochDay = endEpochDay,
         recordCount = included.size,
         recordedDays = included.map(MealRecord::recordEpochDay).distinct().size,
+        mealRecordCount = included.count { it.recordType == DietRecordType.MEAL },
+        beverageRecordCount = included.count { it.recordType == DietRecordType.BEVERAGE },
         totalCalories = if (calories.isEmpty()) null else calories.sum(),
         beverageCups = drinks.sumOf { it.cupCount },
-        categoryRanking = rank(drinks.map { it.category.name to it.cupCount }),
+        categoryRanking = rank(drinks.map { it.category.displayName() to it.cupCount }),
         brandRanking = rank(drinks.filter { it.brandOrStore.isNotBlank() }.map { it.brandOrStore to it.cupCount }),
         sweetnessRanking = rank(drinks.filter { it.sweetness.isNotBlank() }.map { it.sweetness to it.cupCount }),
-        iceRanking = rank(drinks.filter { it.iceLevel.isNotBlank() }.map { it.iceLevel to it.cupCount }),
+        temperatureRanking = rank(drinks.map { it.displayTemperature() }.filter(String::isNotBlank).map { it to 1 }),
+        dailyTotals = dailyTotals,
     )
 }
 

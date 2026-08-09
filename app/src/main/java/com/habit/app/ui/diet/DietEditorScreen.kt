@@ -3,6 +3,7 @@ package com.habit.app.ui.diet
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.model.mealTypeDisplayOrder
+import com.habit.app.domain.model.displayName
 import com.habit.app.ui.components.CategoryChipFlow
 import com.habit.app.ui.components.CategoryChipItem
 import com.habit.app.ui.components.HabitTopAppBar
@@ -32,6 +34,7 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +56,7 @@ fun DietEditorScreen(
     var showCreateCategory by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var cameraTarget by remember { mutableStateOf<CameraPhotoTarget?>(null) }
+    var previewFile by remember { mutableStateOf<File?>(null) }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
         viewModel.importPhotos(it)
     }
@@ -83,7 +87,7 @@ fun DietEditorScreen(
                 AssistChip(
                     onClick = {},
                     enabled = false,
-                    label = { Text(if (state.recordType == DietRecordType.MEAL) "餐食" else "饮品") },
+                    label = { Text(state.recordType.displayName()) },
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -91,7 +95,7 @@ fun DietEditorScreen(
                     FilterChip(state.recordType == DietRecordType.BEVERAGE, { viewModel.update { copy(recordType = DietRecordType.BEVERAGE) } }, { Text("饮品") })
                 }
             }
-            Text(if (state.recordType == DietRecordType.MEAL) "餐食分类" else "饮品分类", style = MaterialTheme.typography.titleMedium)
+            Text("${state.recordType.displayName()}分类", style = MaterialTheme.typography.titleMedium)
             CategoryChipFlow(
                 items = state.dietCategories.map { CategoryChipItem(it.id, it.name) },
                 selectedId = state.dietCategoryId,
@@ -120,6 +124,7 @@ fun DietEditorScreen(
                     DietPhotoThumbnail(
                         path = viewModel.photoFile(photo.relativePath)?.path,
                         onRemove = { viewModel.removePhoto(index) },
+                        onPreview = { previewFile = it },
                     )
                 }
                 if (state.canAddPhoto) {
@@ -267,7 +272,7 @@ fun DietEditorScreen(
     if (showCreateCategory) {
         AlertDialog(
             onDismissRequest = { showCreateCategory = false },
-            title = { Text("新建${if (state.recordType == DietRecordType.MEAL) "餐食" else "饮品"}分类") },
+            title = { Text("新建${state.recordType.displayName()}分类") },
             text = {
                 OutlinedTextField(
                     value = newCategoryName,
@@ -290,18 +295,25 @@ fun DietEditorScreen(
             dismissButton = { TextButton(onClick = { showCreateCategory = false }) { Text("取消") } },
         )
     }
+    previewFile?.let { file -> DietPhotoPreviewDialog(file) { previewFile = null } }
 }
 
 @Composable
-private fun DietPhotoThumbnail(path: String?, onRemove: () -> Unit) {
+private fun DietPhotoThumbnail(
+    path: String?,
+    onRemove: () -> Unit,
+    onPreview: (File) -> Unit,
+) {
+    val file = remember(path) { path?.let(::File)?.takeIf(File::isFile) }
     val bitmap = remember(path) {
-        path?.let {
-            BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = 4 })
+        file?.let {
+            BitmapFactory.decodeFile(it.path, BitmapFactory.Options().apply { inSampleSize = 4 })
         }
     }
     Box(
         modifier = Modifier
             .size(92.dp)
+            .then(if (bitmap != null && file != null) Modifier.clickable { onPreview(file) } else Modifier)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
     ) {
         bitmap?.let {
@@ -329,7 +341,7 @@ private fun MealFields(state: DietEditorUiState, viewModel: DietEditorViewModel)
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         mealTypeDisplayOrder.forEach { type ->
-            FilterChip(state.mealType == type, { viewModel.update { copy(mealType = type) } }, { Text(type.cn()) })
+            FilterChip(state.mealType == type, { viewModel.update { copy(mealType = type) } }, { Text(type.displayName()) })
         }
     }
     OutlinedTextField(
@@ -356,8 +368,7 @@ private fun BeverageFields(state: DietEditorUiState, viewModel: DietEditorViewMo
     DietField(state.beverageName, "饮品名称 *", "diet_beverage_name") { viewModel.update { copy(beverageName = it) } }
     DietField(state.brandOrStore, "品牌 / 门店") { viewModel.update { copy(brandOrStore = it) } }
     DietField(state.sizeOrVolume, "杯型 / 容量") { viewModel.update { copy(sizeOrVolume = it) } }
-    DietField(state.temperature, "冷热") { viewModel.update { copy(temperature = it) } }
-    DietField(state.iceLevel, "冰量") { viewModel.update { copy(iceLevel = it) } }
+    DietField(state.temperature, "温度") { viewModel.update { copy(temperature = it) } }
     DietField(state.sweetness, "甜度") { viewModel.update { copy(sweetness = it) } }
     DietField(state.toppings, "加料（用顿号分隔）") { viewModel.update { copy(toppings = it) } }
     DietField(state.cupCountText, "杯数") { viewModel.update { copy(cupCountText = it.filter(Char::isDigit)) } }
@@ -366,12 +377,4 @@ private fun BeverageFields(state: DietEditorUiState, viewModel: DietEditorViewMo
 @Composable
 private fun DietField(value: String, label: String, tag: String? = null, onChange: (String) -> Unit) {
     OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth().then(if (tag == null) Modifier else Modifier.testTag(tag)))
-}
-
-private fun MealType.cn() = when (this) {
-    MealType.BREAKFAST -> "早餐"
-    MealType.LUNCH -> "午餐"
-    MealType.DINNER -> "晚餐"
-    MealType.LATE_NIGHT -> "夜宵"
-    MealType.SNACK -> "加餐"
 }
