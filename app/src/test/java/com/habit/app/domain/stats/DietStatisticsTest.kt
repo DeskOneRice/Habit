@@ -79,6 +79,36 @@ class DietStatisticsTest {
         assertEquals(2, summary.brandRanking.single().count)
         assertEquals(listOf(10L), summary.dailyTotals.map { it.epochDay })
         assertEquals(2, summary.dailyTotals.single().recordCount)
+        assertEquals(1, summary.dailyTotals.single().calorieRecordCount)
+    }
+
+    @Test
+    fun summaryUsesManagedCategoryNameBeforeLegacyBeverageCategory() {
+        val records = listOf(
+            record(
+                id = 3,
+                day = 10,
+                calories = null,
+                type = DietRecordType.BEVERAGE,
+                mealType = null,
+                beverage = BeverageDetails(
+                    category = BeverageCategory.OTHER,
+                    brandOrStore = "",
+                    beverageName = "气泡水",
+                    sizeOrVolume = "",
+                    temperature = "常温",
+                    iceLevel = "",
+                    sweetness = "",
+                    toppings = emptyList(),
+                    cupCount = 1,
+                ),
+                dietCategoryId = 42,
+            ),
+        )
+
+        val summary = summarizeDiet(records, 10, 10, categoryNames = mapOf(42L to "气泡饮"))
+
+        assertEquals("气泡饮", summary.categoryRanking.single().label)
     }
 
     private fun record(
@@ -88,6 +118,7 @@ class DietStatisticsTest {
         type: DietRecordType = DietRecordType.MEAL,
         mealType: MealType? = MealType.LUNCH,
         beverage: BeverageDetails? = null,
+        dietCategoryId: Long = 0,
     ) = MealRecord(
         id = id,
         recordType = type,
@@ -103,5 +134,6 @@ class DietStatisticsTest {
         note = "",
         createdAt = 100,
         updatedAt = 100,
+        dietCategoryId = dietCategoryId,
     )
 }

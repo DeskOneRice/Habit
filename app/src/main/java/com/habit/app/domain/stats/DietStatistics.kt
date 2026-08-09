@@ -39,6 +39,7 @@ fun summarizeDiet(
     records: List<MealRecord>,
     startEpochDay: Long,
     endEpochDay: Long,
+    categoryNames: Map<Long, String> = emptyMap(),
 ): DietRangeSummary {
     require(startEpochDay <= endEpochDay)
     val included = records.filter { it.recordEpochDay in startEpochDay..endEpochDay }
@@ -51,6 +52,7 @@ fun summarizeDiet(
             epochDay = epochDay,
             recordCount = dayRecords.size,
             totalCalories = dayCalories.takeIf(List<Int>::isNotEmpty)?.sum(),
+            calorieRecordCount = dayCalories.size,
         )
     }
     return DietRangeSummary(
@@ -62,7 +64,15 @@ fun summarizeDiet(
         beverageRecordCount = included.count { it.recordType == DietRecordType.BEVERAGE },
         totalCalories = if (calories.isEmpty()) null else calories.sum(),
         beverageCups = drinks.sumOf { it.cupCount },
-        categoryRanking = rank(drinks.map { it.category.displayName() to it.cupCount }),
+        categoryRanking = rank(
+            included.mapNotNull { record ->
+                record.beverage?.let { beverage ->
+                    categoryNames[record.dietCategoryId]
+                        .orEmpty()
+                        .ifBlank { beverage.category.displayName() } to beverage.cupCount
+                }
+            },
+        ),
         brandRanking = rank(drinks.filter { it.brandOrStore.isNotBlank() }.map { it.brandOrStore to it.cupCount }),
         sweetnessRanking = rank(drinks.filter { it.sweetness.isNotBlank() }.map { it.sweetness to it.cupCount }),
         temperatureRanking = rank(drinks.map { it.displayTemperature() }.filter(String::isNotBlank).map { it to 1 }),

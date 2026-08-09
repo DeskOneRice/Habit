@@ -3,6 +3,8 @@ package com.habit.app.ui.diet
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.habit.app.domain.model.DietRangeSummary
+import com.habit.app.domain.model.DietCategoryScope
+import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.stats.summarizeDiet
 import com.habit.app.domain.time.DeviceDateProvider
@@ -10,7 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
@@ -28,6 +30,7 @@ data class DietStatsUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class DietStatsViewModel(
     repository: DietRepository,
+    categoryRepository: DietCategoryRepository,
     dateProvider: DeviceDateProvider,
 ) : ViewModel() {
     private val end = dateProvider.today().toEpochDay()
@@ -36,9 +39,17 @@ class DietStatsViewModel(
 
     val state: StateFlow<DietStatsUiState> = selectedRange.flatMapLatest { range ->
         val start = start(range)
-        repository.observeRange(start, end).map { records ->
+        combine(
+            repository.observeRange(start, end),
+            categoryRepository.observeAll(DietCategoryScope.BEVERAGE),
+        ) { records, categories ->
             DietStatsUiState(
-                summary = summarizeDiet(records, start, end),
+                summary = summarizeDiet(
+                    records,
+                    start,
+                    end,
+                    categoryNames = categories.associate { it.id to it.name },
+                ),
                 range = range,
                 isLoading = false,
             )

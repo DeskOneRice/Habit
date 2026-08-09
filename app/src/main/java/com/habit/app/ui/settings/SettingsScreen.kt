@@ -101,20 +101,20 @@ fun SettingsScreen(
                 OutlinedButton(
                     onClick = { folderPicker.launch(null) },
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("change_backup_folder"),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("change_backup_folder"),
                 ) { Text("选择保存位置") }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(
                         onClick = viewModel::exportData,
                         enabled = !state.busy,
-                        modifier = Modifier.weight(1f).testTag("export_data"),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("export_data"),
                     ) { Text("导出数据") }
                     OutlinedButton(
                         onClick = {
                             importPicker.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
                         },
                         enabled = !state.busy,
-                        modifier = Modifier.weight(1f).testTag("import_data"),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("import_data"),
                     ) { Text("导入数据") }
                 }
                 if (state.busy) Text("正在处理，请稍候…", color = MaterialTheme.colorScheme.primary)

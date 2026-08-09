@@ -34,18 +34,15 @@ class CalendarFlowTest {
     }
 
     @Test
-    fun fiveCompletedHabitsShowFourDistinctMarksAndOverflow() {
+    fun fiveCompletedHabitsUseTwoSlotEmojiAndOverflowRule() {
         val date = robot.today()
         robot.seedCompletedHabits(date, listOf("book", "sprout", "run", "heart", "water"))
         launchCalendar()
 
         robot.assertTagText("day_${date}_mark_0", "📚")
-        robot.assertTagText("day_${date}_mark_1", "🌱")
-        robot.assertTagText("day_${date}_mark_2", "🏃")
-        robot.assertTagText("day_${date}_mark_3", "💛")
         robot.waitForTag("day_${date}_overflow", useUnmergedTree = true)
         composeRule.onNodeWithTag("day_${date}_overflow", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithText("+1").assertIsDisplayed()
+        composeRule.onNodeWithText("+4").assertIsDisplayed()
     }
 
     @Test

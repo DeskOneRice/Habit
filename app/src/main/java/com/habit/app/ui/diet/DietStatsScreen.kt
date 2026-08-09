@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
@@ -118,20 +117,34 @@ private fun StatsOverview(summary: DietRangeSummary) {
 @Composable
 private fun TrendCard(summary: DietRangeSummary, range: DietStatsRange) {
     val buckets = chartBuckets(summary.dailyTotals, range)
+    val calorieCoverage = summary.dailyTotals.sumOf(DietDailyTotal::calorieRecordCount)
+    val missingCalories = summary.recordCount - calorieCoverage
     HabitCard(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
             Text("每日趋势", style = MaterialTheme.typography.titleMedium)
             Text(
-                summary.totalCalories?.let { "合计 $it kcal" } ?: "暂无热量记录",
+                when {
+                    summary.totalCalories != null && missingCalories > 0 -> "合计 ${summary.totalCalories} kcal · 部分记录"
+                    summary.totalCalories != null -> "合计 ${summary.totalCalories} kcal"
+                    else -> "暂无热量记录"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.height(14.dp))
-        if (buckets.all { it.value == 0 }) {
+        if (buckets.all { it.recordCount == 0 }) {
             EmptyStats("记录饮食后会显示每日趋势")
         } else {
             TrendChart(buckets)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "柱形为记录数，折线为已填写热量",
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -141,15 +154,16 @@ private fun TrendChart(buckets: List<ChartBucket>) {
     val primary = MaterialTheme.colorScheme.primary
     val barColor = MaterialTheme.colorScheme.primaryContainer
     val axisColor = MaterialTheme.colorScheme.outlineVariant
-    val max = buckets.maxOfOrNull(ChartBucket::value)?.coerceAtLeast(1) ?: 1
+    val maxRecords = buckets.maxOfOrNull(ChartBucket::recordCount)?.coerceAtLeast(1) ?: 1
+    val maxCalories = buckets.mapNotNull(ChartBucket::calories).maxOrNull()?.coerceAtLeast(1) ?: 1
     Canvas(Modifier.fillMaxWidth().height(132.dp)) {
         val chartHeight = size.height - 24.dp.toPx()
         val slot = size.width / buckets.size.coerceAtLeast(1)
         drawLine(axisColor, Offset(0f, chartHeight), Offset(size.width, chartHeight), strokeWidth = 1.dp.toPx())
-        val line = Path()
+        var previousCaloriePoint: Offset? = null
         buckets.forEachIndexed { index, bucket ->
-            val ratio = bucket.value.toFloat() / max
-            val barHeight = chartHeight * ratio
+            val barRatio = bucket.recordCount.toFloat() / maxRecords
+            val barHeight = chartHeight * barRatio
             val width = slot * 0.42f
             val left = index * slot + (slot - width) / 2f
             val top = chartHeight - barHeight
@@ -159,11 +173,19 @@ private fun TrendChart(buckets: List<ChartBucket>) {
                 size = Size(width, barHeight),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
             )
-            val point = Offset(index * slot + slot / 2f, top)
-            if (index == 0) line.moveTo(point.x, point.y) else line.lineTo(point.x, point.y)
-            drawCircle(primary, radius = 2.5.dp.toPx(), center = point)
+            val calories = bucket.calories
+            if (calories == null) {
+                previousCaloriePoint = null
+            } else {
+                val calorieTop = chartHeight - chartHeight * (calories.toFloat() / maxCalories)
+                val point = Offset(index * slot + slot / 2f, calorieTop)
+                previousCaloriePoint?.let { previous ->
+                    drawLine(primary, previous, point, strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                }
+                drawCircle(primary, radius = 2.5.dp.toPx(), center = point)
+                previousCaloriePoint = point
+            }
         }
-        drawPath(line, primary, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
     }
     Row(Modifier.fillMaxWidth()) {
         buckets.forEach { bucket ->
@@ -269,18 +291,34 @@ private fun EmptyStats(text: String) {
     )
 }
 
-private data class ChartBucket(val label: String, val value: Int)
+internal data class ChartBucket(
+    val label: String,
+    val recordCount: Int,
+    val calories: Int?,
+    val calorieRecordCount: Int,
+)
 
-private fun chartBuckets(values: List<DietDailyTotal>, range: DietStatsRange): List<ChartBucket> {
+internal fun chartBuckets(values: List<DietDailyTotal>, range: DietStatsRange): List<ChartBucket> {
     if (range == DietStatsRange.SEVEN_DAYS) {
         val weekLabels = listOf("一", "二", "三", "四", "五", "六", "日")
         return values.map { total ->
-            ChartBucket(weekLabels[LocalDate.ofEpochDay(total.epochDay).dayOfWeek.value - 1], total.totalCalories ?: 0)
+            ChartBucket(
+                weekLabels[LocalDate.ofEpochDay(total.epochDay).dayOfWeek.value - 1],
+                total.recordCount,
+                total.totalCalories,
+                total.calorieRecordCount,
+            )
         }
     }
     return values.chunked(6).map { group ->
         val first = LocalDate.ofEpochDay(group.first().epochDay).dayOfMonth
         val last = LocalDate.ofEpochDay(group.last().epochDay).dayOfMonth
-        ChartBucket("$first–$last", group.sumOf { it.totalCalories ?: 0 })
+        val knownCalories = group.mapNotNull(DietDailyTotal::totalCalories)
+        ChartBucket(
+            "$first–$last",
+            recordCount = group.sumOf(DietDailyTotal::recordCount),
+            calories = knownCalories.takeIf(List<Int>::isNotEmpty)?.sum(),
+            calorieRecordCount = group.sumOf(DietDailyTotal::calorieRecordCount),
+        )
     }
 }

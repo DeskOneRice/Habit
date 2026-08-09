@@ -2,10 +2,13 @@ package com.habit.app.ui.diet
 
 import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRecordType
+import com.habit.app.domain.model.DietCategory
+import com.habit.app.domain.model.DietCategoryScope
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.repository.DietRepository
+import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import java.time.LocalDate
 import java.time.ZoneId
@@ -13,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -35,7 +39,7 @@ class DietStatsViewModelTest {
         val repository = StatsRepository()
         val today = FixedStatsDateProvider.today().toEpochDay()
         repository.records.value = listOf(record(1, today, DietRecordType.MEAL))
-        val viewModel = DietStatsViewModel(repository, FixedStatsDateProvider)
+        val viewModel = DietStatsViewModel(repository, EmptyStatsCategoryRepository, FixedStatsDateProvider)
         advanceUntilIdle()
 
         assertEquals(DietStatsRange.SEVEN_DAYS, viewModel.state.value.range)
@@ -67,6 +71,16 @@ class DietStatsViewModelTest {
         createdAt = 1,
         updatedAt = 1,
     )
+}
+
+private object EmptyStatsCategoryRepository : DietCategoryRepository {
+    override fun observeAll(scope: DietCategoryScope): Flow<List<DietCategory>> = flowOf(emptyList())
+    override fun observeVisible(scope: DietCategoryScope): Flow<List<DietCategory>> = flowOf(emptyList())
+    override fun observeUsageCounts(scope: DietCategoryScope): Flow<Map<Long, Int>> = flowOf(emptyMap())
+    override suspend fun create(scope: DietCategoryScope, name: String): Long = 1
+    override suspend fun rename(id: Long, name: String) = Unit
+    override suspend fun setHidden(id: Long, hidden: Boolean) = Unit
+    override suspend fun migrateAndDelete(sourceId: Long, targetId: Long) = Unit
 }
 
 private class StatsRepository : DietRepository {

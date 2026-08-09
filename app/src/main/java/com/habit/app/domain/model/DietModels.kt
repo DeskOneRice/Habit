@@ -130,6 +130,7 @@ data class DietDailyTotal(
     val epochDay: Long,
     val recordCount: Int,
     val totalCalories: Int?,
+    val calorieRecordCount: Int,
 )
 
 data class DietRangeSummary(

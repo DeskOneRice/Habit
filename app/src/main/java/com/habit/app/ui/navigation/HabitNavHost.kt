@@ -404,7 +404,11 @@ private class DietTemplateFactory(private val container: AppContainer) : ViewMod
 private class DietStatsFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        DietStatsViewModel(container.dietRepository, container.dateProvider) as T
+        DietStatsViewModel(
+            container.dietRepository,
+            container.dietCategoryRepository,
+            container.dateProvider,
+        ) as T
 }
 
 private class DietSettingsFactory(private val container: AppContainer) : ViewModelProvider.Factory {
