@@ -12,31 +12,67 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
-class AndroidKeystoreAiSecretStore(context: Context) : AiSecretStore {
+class AndroidKeystoreAiSecretStore(
+    context: Context,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val preferenceCommit: (SharedPreferences.Editor) -> Boolean = { it.commit() },
+    private val preferenceApply: (SharedPreferences.Editor) -> Unit = { it.apply() },
+) : AiSecretStore {
     private val preferences: SharedPreferences = context.applicationContext.getSharedPreferences(
         PREFERENCES_FILE,
         Context.MODE_PRIVATE,
     )
 
-    override suspend fun put(externalId: String, apiKey: String) {
+    override suspend fun put(externalId: String, apiKey: String) = withContext(dispatcher) {
         require(apiKey.isNotBlank()) { "API key must not be blank." }
 
-        val encoded = try {
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
-            val iv = cipher.iv
-            check(iv.size == IV_SIZE_BYTES) { STORAGE_FAILURE_MESSAGE }
-            val ciphertext = cipher.doFinal(apiKey.toByteArray(StandardCharsets.UTF_8))
-            Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)
-        } catch (_: GeneralSecurityException) {
-            throw IllegalStateException(STORAGE_FAILURE_MESSAGE)
-        }
+        MUTATION_MUTEX.withLock {
+            val encoded = try {
+                val cipher = Cipher.getInstance(TRANSFORMATION)
+                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
+                val iv = cipher.iv
+                check(iv.size == IV_SIZE_BYTES) { STORAGE_FAILURE_MESSAGE }
+                val ciphertext = cipher.doFinal(apiKey.toByteArray(StandardCharsets.UTF_8))
+                Base64.encodeToString(iv + ciphertext, Base64.NO_WRAP)
+            } catch (_: GeneralSecurityException) {
+                throw IllegalStateException(STORAGE_FAILURE_MESSAGE)
+            }
 
-        commitOrThrow { putString(externalId, encoded) }
+            commitOrRollback { putString(externalId, encoded) }
+        }
     }
 
-    override suspend fun get(externalId: String): String? {
+    override suspend fun get(externalId: String): String? = withContext(dispatcher) {
+        MUTATION_MUTEX.withLock {
+            decrypt(externalId)
+        }
+    }
+
+    override suspend fun maskedSuffix(externalId: String): String? = withContext(dispatcher) {
+        MUTATION_MUTEX.withLock {
+            decrypt(externalId)?.takeLast(MASKED_SUFFIX_LENGTH)
+        }
+    }
+
+    override suspend fun remove(externalId: String) = withContext(dispatcher) {
+        MUTATION_MUTEX.withLock {
+            commitOrRollback { remove(externalId) }
+        }
+    }
+
+    override suspend fun clearAll() = withContext(dispatcher) {
+        MUTATION_MUTEX.withLock {
+            commitOrRollback { clear() }
+        }
+    }
+
+    private fun decrypt(externalId: String): String? {
         val encoded = preferences.all[externalId] as? String ?: return null
         return try {
             val payload = Base64.decode(encoded, Base64.NO_WRAP)
@@ -53,17 +89,6 @@ class AndroidKeystoreAiSecretStore(context: Context) : AiSecretStore {
         } catch (_: IllegalArgumentException) {
             null
         }
-    }
-
-    override suspend fun maskedSuffix(externalId: String): String? =
-        get(externalId)?.takeLast(MASKED_SUFFIX_LENGTH)
-
-    override suspend fun remove(externalId: String) {
-        commitOrThrow { remove(externalId) }
-    }
-
-    override suspend fun clearAll() {
-        commitOrThrow { clear() }
     }
 
     private fun getOrCreateSecretKey(): SecretKey = synchronized(KEY_LOCK) {
@@ -90,13 +115,66 @@ class AndroidKeystoreAiSecretStore(context: Context) : AiSecretStore {
         return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
     }
 
-    private inline fun commitOrThrow(edit: SharedPreferences.Editor.() -> Unit) {
-        val committed = try {
-            preferences.edit().apply(edit).commit()
+    private inline fun commitOrRollback(edit: SharedPreferences.Editor.() -> Unit) {
+        val snapshot = try {
+            snapshotPreferences()
         } catch (_: RuntimeException) {
+            throw IllegalStateException(STORAGE_FAILURE_MESSAGE)
+        }
+        val committed = try {
+            preferenceCommit(preferences.edit().apply(edit))
+        } catch (_: Exception) {
             false
         }
-        check(committed) { STORAGE_FAILURE_MESSAGE }
+        if (!committed) {
+            val message = if (restoreVisibleSnapshot(snapshot)) {
+                STORAGE_FAILURE_MESSAGE
+            } else {
+                STORAGE_RECOVERY_FAILURE_MESSAGE
+            }
+            throw IllegalStateException(message)
+        }
+    }
+
+    private fun snapshotPreferences(): Map<String, Any?> = preferences.all.mapValues { (_, value) ->
+        if (value is Set<*>) value.filterIsInstance<String>().toSet() else value
+    }
+
+    private fun restoreVisibleSnapshot(snapshot: Map<String, Any?>): Boolean {
+        val synchronousRestoreSucceeded = try {
+            preferenceCommit(snapshotEditor(snapshot))
+        } catch (_: Exception) {
+            false
+        }
+        if (!synchronousRestoreSucceeded || !visibleSnapshotMatches(snapshot)) {
+            try {
+                preferenceApply(snapshotEditor(snapshot))
+            } catch (_: Exception) {
+                // Verification below determines whether the visible snapshot was restored.
+            }
+        }
+        return visibleSnapshotMatches(snapshot)
+    }
+
+    private fun snapshotEditor(snapshot: Map<String, Any?>): SharedPreferences.Editor =
+        preferences.edit().clear().also { editor ->
+            snapshot.forEach { (key, value) ->
+                when (value) {
+                    null -> editor.remove(key)
+                    is String -> editor.putString(key, value)
+                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                }
+            }
+        }
+
+    private fun visibleSnapshotMatches(snapshot: Map<String, Any?>): Boolean = try {
+        snapshotPreferences() == snapshot
+    } catch (_: RuntimeException) {
+        false
     }
 
     private companion object {
@@ -109,6 +187,8 @@ class AndroidKeystoreAiSecretStore(context: Context) : AiSecretStore {
         const val GCM_TAG_SIZE_BYTES = GCM_TAG_SIZE_BITS / Byte.SIZE_BITS
         const val MASKED_SUFFIX_LENGTH = 4
         const val STORAGE_FAILURE_MESSAGE = "Secure API key storage failed."
+        const val STORAGE_RECOVERY_FAILURE_MESSAGE = "Secure API key state recovery failed."
         val KEY_LOCK = Any()
+        val MUTATION_MUTEX = Mutex()
     }
 }
