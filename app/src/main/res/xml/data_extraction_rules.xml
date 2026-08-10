@@ -5,6 +5,7 @@
         <exclude domain="file" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="habit_ai_secrets.xml" />
         <exclude domain="external" path="." />
         <exclude domain="device_root" path="." />
         <exclude domain="device_file" path="." />
@@ -16,6 +17,7 @@
         <exclude domain="file" path="." />
         <exclude domain="database" path="." />
         <exclude domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="habit_ai_secrets.xml" />
         <exclude domain="external" path="." />
         <exclude domain="device_root" path="." />
         <exclude domain="device_file" path="." />

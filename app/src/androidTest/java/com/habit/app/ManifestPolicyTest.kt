@@ -61,6 +61,54 @@ class ManifestPolicyTest {
             ALL_BACKUP_DOMAINS,
             excludedDomains(resources, extractionRulesId, "device-transfer"),
         )
+        assertEquals(
+            "Legacy backup rules must explicitly exclude the AI secret preferences file.",
+            setOf(AI_SECRET_PREFERENCES_FILE),
+            excludedPaths(resources, legacyRulesId, "sharedpref"),
+        )
+        assertEquals(
+            "Android 12+ cloud backup must explicitly exclude the AI secret preferences file.",
+            setOf(AI_SECRET_PREFERENCES_FILE),
+            excludedPaths(resources, extractionRulesId, "sharedpref", "cloud-backup"),
+        )
+        assertEquals(
+            "Android 12+ device transfer must explicitly exclude the AI secret preferences file.",
+            setOf(AI_SECRET_PREFERENCES_FILE),
+            excludedPaths(resources, extractionRulesId, "sharedpref", "device-transfer"),
+        )
+    }
+
+    private fun excludedPaths(
+        resources: Resources,
+        xmlResourceId: Int,
+        domain: String,
+        section: String? = null,
+    ): Set<String> {
+        val parser = resources.getXml(xmlResourceId)
+        return try {
+            val paths = mutableSetOf<String>()
+            var activeSection = section == null
+            while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+                when (parser.eventType) {
+                    XmlPullParser.START_TAG -> when {
+                        parser.name == section -> activeSection = true
+                        parser.name == "exclude" && activeSection &&
+                            parser.getAttributeValue(null, "domain") == domain -> {
+                            parser.getAttributeValue(null, "path")
+                                ?.takeUnless { it == "." }
+                                ?.let(paths::add)
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        if (parser.name == section) activeSection = false
+                    }
+                }
+                parser.next()
+            }
+            paths
+        } finally {
+            parser.close()
+        }
     }
 
     private fun excludedDomains(
@@ -95,6 +143,7 @@ class ManifestPolicyTest {
     }
 
     private companion object {
+        const val AI_SECRET_PREFERENCES_FILE = "habit_ai_secrets.xml"
         val ALL_BACKUP_DOMAINS = setOf(
             "root",
             "file",
