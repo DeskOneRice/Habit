@@ -54,6 +54,7 @@ import com.habit.app.domain.time.SystemDeviceDateProvider
 import com.habit.app.ui.ai.AiModelOperationCoordinator
 import com.habit.app.ui.ai.AiWeeklyReportViewModel
 import com.habit.app.ui.workbench.WeeklyInsightSummary
+import com.habit.app.ui.workbench.WeeklyInsightSavedData
 import com.habit.app.ui.workbench.buildWeeklyInsightSummary
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
@@ -112,7 +113,15 @@ class AppContainer(
         buildWeeklyInsightSummary(
             now = clock.instant(),
             hasUsableWeeklyModel = models.firstOrNull { it.id == boundId }?.isUsableWeeklyModel() == true,
-            reports = reports,
+            savedReports = reports.map { report ->
+                WeeklyInsightSavedData(
+                    startEpochDay = report.startEpochDay,
+                    endEpochDay = report.endEpochDay,
+                    title = report.title,
+                    overview = report.overview,
+                    generatedAt = report.generatedAt,
+                )
+            },
         )
     }
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)

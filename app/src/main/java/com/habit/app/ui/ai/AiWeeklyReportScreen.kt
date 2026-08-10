@@ -1,5 +1,6 @@
 package com.habit.app.ui.ai
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,9 +30,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.AiWeeklyReport
 import com.habit.app.domain.model.AiWeeklyReportDraft
@@ -44,6 +50,18 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+sealed interface WeeklySuggestionPresentation {
+    data class Valid(val items: List<String>) : WeeklySuggestionPresentation
+    data object Incomplete : WeeklySuggestionPresentation
+}
+
+internal fun presentWeeklySuggestions(suggestions: List<String>): WeeklySuggestionPresentation {
+    if (suggestions.size != 3) return WeeklySuggestionPresentation.Incomplete
+    val normalized = suggestions.map { it.replace(SUGGESTION_PREFIX, "").trim() }
+    return if (normalized.any(String::isBlank)) WeeklySuggestionPresentation.Incomplete
+    else WeeklySuggestionPresentation.Valid(normalized)
+}
+
 @Composable
 fun AiWeeklyReportScreen(
     viewModel: AiWeeklyReportViewModel,
@@ -55,46 +73,52 @@ fun AiWeeklyReportScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val replacement by viewModel.replacementRequests.collectAsStateWithLifecycle()
+    val busy = state is AiWeeklyReportState.Generating || state is AiWeeklyReportState.Saving
     var showGenerateConfirmation by remember { mutableStateOf(false) }
+    BackHandler(enabled = busy) { }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .testTag("weekly_report_root"),
-    ) {
-        HabitTopAppBar("综合周报", navigationMode, onNavigation) {
-            HabitTopAction(
-                text = "历史",
-                contentDescription = "查看历史周报",
-                onClick = onOpenHistory,
-                modifier = Modifier.testTag("weekly_report_history"),
-            )
-        }
-        Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().testTag("weekly_report_root")) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .then(if (busy) Modifier.clearAndSetSemantics { } else Modifier),
+        ) {
+            HabitTopAppBar("综合周报", navigationMode, { if (!busy) onNavigation() }) {
+                HabitTopAction(
+                    text = "历史",
+                    contentDescription = "查看历史周报",
+                    onClick = { if (!busy) onOpenHistory() },
+                    modifier = Modifier.testTag("weekly_report_history"),
+                    enabled = !busy,
+                )
+            }
             when (val current = state) {
                 AiWeeklyReportState.LoadingLocalData -> LoadingLocalData()
                 is AiWeeklyReportState.ReadyToGenerate -> ReadyToGenerateContent(
                     state = current,
-                    onGenerate = { showGenerateConfirmation = true },
-                    onOpenSaved = { onOpenSavedReport(it.startEpochDay) },
+                    onGenerate = { if (!busy) showGenerateConfirmation = true },
+                    onOpenSaved = { if (!busy) onOpenSavedReport(it.startEpochDay) },
                 )
                 is AiWeeklyReportState.Generating -> {
-                    StableReportContent(current.recoverTo, onGenerate = {}, onOpenSavedReport)
-                    LoadingOverlay(label = "正在生成周报…", onCancel = viewModel::cancelGeneration)
+                    StableReportContent(current.recoverTo, onGenerate = {}, onOpenSaved = {})
                 }
                 is AiWeeklyReportState.Preview -> PreviewContent(current, viewModel::save)
                 is AiWeeklyReportState.Saving -> {
                     PreviewContent(current.preview, onSave = {})
-                    LoadingOverlay(label = "正在保存周报…")
                 }
                 is AiWeeklyReportState.Saved -> AiWeeklyReportDocument(current.report)
                 is AiWeeklyReportState.Error -> ErrorContent(
                     error = current,
                     onRetry = viewModel::retry,
-                    onOpenModelSettings = onOpenModelSettings,
+                    onOpenModelSettings = { if (!busy) onOpenModelSettings() },
                 )
             }
+        }
+        if (busy) {
+            LoadingOverlay(
+                label = if (state is AiWeeklyReportState.Generating) "正在生成周报…" else "正在保存周报…",
+            )
         }
     }
 
@@ -267,11 +291,20 @@ private fun ErrorContent(
 }
 
 @Composable
-private fun LoadingOverlay(label: String, onCancel: (() -> Unit)? = null) {
+private fun LoadingOverlay(label: String) {
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.18f))
+            .zIndex(10f)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                    }
+                }
+            }
+            .clearAndSetSemantics { contentDescription = label }
             .testTag("weekly_report_loading_overlay"),
         contentAlignment = Alignment.Center,
     ) {
@@ -283,23 +316,20 @@ private fun LoadingOverlay(label: String, onCancel: (() -> Unit)? = null) {
                 CircularProgressIndicator()
                 Spacer(Modifier.height(12.dp))
                 Text(label, style = MaterialTheme.typography.titleMedium)
-                onCancel?.let {
-                    Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = it, modifier = Modifier.heightIn(min = 48.dp)) { Text("取消") }
-                }
             }
         }
     }
 }
 
 @Composable
-internal fun AiWeeklyReportDocument(report: AiWeeklyReport) {
-    WeeklyReportDocument(report.toDocument())
+internal fun AiWeeklyReportDocument(report: AiWeeklyReport, onRegenerate: () -> Unit = {}) {
+    WeeklyReportDocument(report.toDocument(), onRegenerate = onRegenerate)
 }
 
 @Composable
 private fun WeeklyReportDocument(
     document: WeeklyReportDocument,
+    onRegenerate: (() -> Unit)? = null,
     bottomContent: @Composable () -> Unit = {},
 ) {
     LazyColumn(
@@ -322,26 +352,38 @@ private fun WeeklyReportDocument(
                 HabitCard(Modifier.fillMaxWidth().testTag("weekly_report_suggestions")) {
                     Text("下周建议", style = MaterialTheme.typography.titleLarge)
                     Spacer(Modifier.height(10.dp))
-                    document.suggestions.take(3).forEachIndexed { index, suggestion ->
-                        Row(
-                            Modifier.fillMaxWidth().testTag("weekly_report_numbered_suggestion"),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                shape = MaterialTheme.shapes.large,
+                    when (val suggestions = presentWeeklySuggestions(document.suggestions)) {
+                        is WeeklySuggestionPresentation.Valid -> suggestions.items.forEachIndexed { index, suggestion ->
+                            Row(
+                                Modifier.fillMaxWidth().testTag("weekly_report_numbered_suggestion"),
+                                verticalAlignment = Alignment.Top,
                             ) {
-                                Text(
-                                    "${index + 1}",
-                                    Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    fontWeight = FontWeight.Bold,
-                                )
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = MaterialTheme.shapes.large,
+                                ) {
+                                    Text(
+                                        "${index + 1}",
+                                        Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text(suggestion, Modifier.weight(1f).padding(top = 4.dp))
                             }
-                            Spacer(Modifier.width(10.dp))
-                            Text(suggestion, Modifier.weight(1f).padding(top = 4.dp))
+                            if (index < 2) Spacer(Modifier.height(10.dp))
                         }
-                        if (index < 2) Spacer(Modifier.height(10.dp))
+                        WeeklySuggestionPresentation.Incomplete -> {
+                            Text("周报建议数据不完整，请重新生成。", color = MaterialTheme.colorScheme.error)
+                            onRegenerate?.let {
+                                Spacer(Modifier.height(10.dp))
+                                Button(
+                                    onClick = it,
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("weekly_report_regenerate"),
+                                ) { Text("重新生成周报") }
+                            }
+                        }
                     }
                 }
                 HabitCard(Modifier.fillMaxWidth().testTag("weekly_report_footer")) {
@@ -445,3 +487,4 @@ private fun coverageText(coverage: WeeklyReportCoverage): String =
 
 private val FULL_DATE = DateTimeFormatter.ofPattern("yyyy年M月d日")
 private val SHORT_DATE = DateTimeFormatter.ofPattern("M月d日")
+private val SUGGESTION_PREFIX = Regex("^\\s*(?:[123][.、)]|[一二三]、)\\s*")

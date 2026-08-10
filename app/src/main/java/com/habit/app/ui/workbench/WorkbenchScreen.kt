@@ -154,7 +154,7 @@ internal fun WeeklyInsightCard(
             when (summary.status) {
                 WeeklyInsightStatus.NEEDS_MODEL -> "先配置周报模型"
                 WeeklyInsightStatus.READY_TO_GENERATE -> "上周数据已准备好"
-                WeeklyInsightStatus.SAVED -> summary.savedReport?.title ?: "上周周报已保存"
+                WeeklyInsightStatus.SAVED -> summary.title ?: "上周周报已保存"
             },
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
@@ -163,14 +163,14 @@ internal fun WeeklyInsightCard(
             "${summary.startDate.format(weeklyInsightStartFormatter)} – ${summary.endDate.format(weeklyInsightEndFormatter)}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        summary.savedReport?.let { report ->
+        summary.generatedAt?.let { generatedAt ->
             Text(
-                "生成于 ${Instant.ofEpochMilli(report.generatedAt).atZone(HabitTimePolicy.zoneId).format(weeklyInsightGeneratedFormatter)}",
+                "生成于 ${Instant.ofEpochMilli(generatedAt).atZone(HabitTimePolicy.zoneId).format(weeklyInsightGeneratedFormatter)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        summary.savedReport?.overview?.let {
+        summary.overview?.let {
             Spacer(Modifier.height(6.dp))
             Text(it, maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -178,7 +178,7 @@ internal fun WeeklyInsightCard(
         Button(
             onClick = {
                 if (summary.status == WeeklyInsightStatus.NEEDS_MODEL) onOpenModelSettings()
-                else onOpenReport(summary.savedReport?.startEpochDay)
+                else onOpenReport(summary.detailStartEpochDay)
             },
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("weekly_insight_action"),
         ) {

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -15,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.espresso.Espresso.pressBack
 import com.habit.app.data.ai.AiCompletionClient
 import com.habit.app.data.ai.AiPreparedImage
 import com.habit.app.data.ai.AiSecretStore
@@ -41,6 +43,10 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.CompletableDeferred
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -106,8 +112,8 @@ class AiWeeklyReportFlowTest {
 
     @Test
     fun historyIsNewestFirstAndNavigationReopensReadOnlyDetailWithBackToRoot() {
-        val older = savedReport(LocalDate.of(2026, 7, 27), "七月底周报", id = 1)
-        val newer = savedReport(LocalDate.of(2026, 8, 3), "八月首周周报", id = 2)
+        val older = weeklySavedReport(LocalDate.of(2026, 7, 27), "七月底周报", id = 1)
+        val newer = weeklySavedReport(LocalDate.of(2026, 8, 3), "八月首周周报", id = 2)
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
                 val navController = rememberNavController()
@@ -156,7 +162,7 @@ class AiWeeklyReportFlowTest {
 
     @Test
     fun sameWeekReplacementNeedsConfirmationAndSaveFailureKeepsOldReport() {
-        val old = savedReport(LocalDate.of(2026, 8, 3), "旧周报", id = 8)
+        val old = weeklySavedReport(LocalDate.of(2026, 8, 3), "旧周报", id = 8)
         val fixture = fixture(reports = listOf(old), failSave = true)
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
@@ -180,7 +186,7 @@ class AiWeeklyReportFlowTest {
 
     @Test
     fun confirmedSameWeekReplacementSavesTheNewReport() {
-        val old = savedReport(LocalDate.of(2026, 8, 3), "旧周报", id = 8)
+        val old = weeklySavedReport(LocalDate.of(2026, 8, 3), "旧周报", id = 8)
         val fixture = fixture(reports = listOf(old))
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
@@ -207,29 +213,142 @@ class AiWeeklyReportFlowTest {
         composeRule.onNodeWithTag("weekly_report_save").assertDoesNotExist()
     }
 
+    @Test
+    fun delayedDetailFlowShowsLoadingBeforeFoundWithoutNotFoundFlash() {
+        val release = CompletableDeferred<Unit>()
+        val delayedReport = flow {
+            release.await()
+            emit(weeklySavedReport(LocalDate.of(2026, 8, 3), "延迟周报", 3))
+        }
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiWeeklyReportDetailRoute(
+                    reportFlow = delayedReport,
+                    onBack = {},
+                    onRegenerate = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("weekly_report_detail_loading").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_detail_not_found").assertDoesNotExist()
+        composeRule.runOnIdle { release.complete(Unit) }
+        composeRule.onNodeWithText("延迟周报").assertIsDisplayed()
+    }
+
+    @Test
+    fun missingDetailRouteKeepsStandardBackNavigation() {
+        val backCalls = AtomicInteger()
+        val missingReport = flowOf<AiWeeklyReport?>(null)
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiWeeklyReportDetailRoute(missingReport, { backCalls.incrementAndGet() }, {})
+            }
+        }
+        composeRule.onNodeWithTag("weekly_report_detail_not_found").assertIsDisplayed()
+        composeRule.onNodeWithTag("navigate_back").performClick()
+        assertEquals(1, backCalls.get())
+    }
+
+    @Test
+    fun busyOverlayHidesUnderlyingSemanticsBlocksBackAndRecoversAfterGenerateAndSave() {
+        val client = HangingFlowWeeklyClient()
+        val fixture = fixture(client = client, suspendSave = true)
+        val menuCalls = AtomicInteger()
+        val historyCalls = AtomicInteger()
+        val detailCalls = AtomicInteger()
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiWeeklyReportScreen(
+                    fixture.viewModel,
+                    NavigationMode.MENU,
+                    { menuCalls.incrementAndGet() },
+                    { historyCalls.incrementAndGet() },
+                    { detailCalls.incrementAndGet() },
+                    {},
+                )
+            }
+        }
+        composeRule.waitUntil(5_000) { fixture.viewModel.state.value is AiWeeklyReportState.ReadyToGenerate }
+        composeRule.onNodeWithTag("weekly_report_generate").performClick()
+        composeRule.onNodeWithTag("weekly_report_generate_confirm").performClick()
+        composeRule.waitUntil(5_000) { client.started.isCompleted }
+
+        composeRule.onNodeWithContentDescription("正在生成周报…").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_history").assertDoesNotExist()
+        composeRule.onNodeWithTag("open_drawer").assertDoesNotExist()
+        composeRule.onNodeWithTag("weekly_report_generate").assertDoesNotExist()
+        pressBack()
+        assertEquals(0, menuCalls.get() + historyCalls.get() + detailCalls.get())
+
+        composeRule.runOnIdle { client.release.complete(Unit) }
+        composeRule.waitUntil(5_000) { fixture.viewModel.state.value is AiWeeklyReportState.Preview }
+        composeRule.onNodeWithTag("weekly_report_history").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_save").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) { fixture.reports.saveStarted.isCompleted }
+
+        composeRule.onNodeWithContentDescription("正在保存周报…").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_history").assertDoesNotExist()
+        composeRule.onNodeWithTag("weekly_report_save").assertDoesNotExist()
+        pressBack()
+        assertEquals(0, menuCalls.get() + historyCalls.get() + detailCalls.get())
+        composeRule.runOnIdle { fixture.reports.releaseSave.complete(Unit) }
+        composeRule.waitUntil(5_000) { fixture.viewModel.state.value is AiWeeklyReportState.Saved }
+        composeRule.onNodeWithTag("weekly_report_history").performClick()
+        assertEquals(1, historyCalls.get())
+    }
+
+    @Test
+    fun damagedHistorySuggestionsShowIncompleteMessageAndRegenerateEntry() {
+        val regenerateCalls = AtomicInteger()
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiWeeklyReportDetailScreen(
+                    report = weeklySavedReport(LocalDate.of(2026, 8, 3), "损坏周报", 7)
+                        .copy(suggestions = listOf("只有一", "只有二")),
+                    onBack = {},
+                    onRegenerate = { regenerateCalls.incrementAndGet() },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("周报建议数据不完整，请重新生成。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_regenerate").performScrollTo().performClick()
+        assertEquals(1, regenerateCalls.get())
+        composeRule.onAllNodesWithTag("weekly_report_numbered_suggestion").assertCountEquals(0)
+    }
+
     private fun fixture(
         reports: List<AiWeeklyReport> = emptyList(),
         failSave: Boolean = false,
-    ): WeeklyFixture {
-        val reportRepository = FlowWeeklyReportRepository(reports, failSave)
-        val client = FlowWeeklyClient()
-        return WeeklyFixture(
-            client = client,
-            reports = reportRepository,
-            viewModel = AiWeeklyReportViewModel(
-                inputLoader = WeeklyReportInputLoader { WeeklyReportInputBuildResult.Ready(INPUT) },
-                modelRepository = FlowWeeklyModelRepository(),
-                reportRepository = reportRepository,
-                secretStore = FlowWeeklySecrets,
-                client = client,
-                dateProvider = FlowWeeklyDateProvider,
-                clock = Clock.fixed(Instant.parse("2026-08-11T03:00:00Z"), ZoneOffset.UTC),
-            ),
-        )
-    }
+        client: FlowWeeklyClient = FlowWeeklyClient(),
+        suspendSave: Boolean = false,
+    ): WeeklyFixture = weeklyTestFixture(reports, failSave, client, suspendSave)
 }
 
-private data class WeeklyFixture(
+internal fun weeklyTestFixture(
+    reports: List<AiWeeklyReport> = emptyList(),
+    failSave: Boolean = false,
+    client: FlowWeeklyClient = FlowWeeklyClient(),
+    suspendSave: Boolean = false,
+): WeeklyFixture {
+    val reportRepository = FlowWeeklyReportRepository(reports, failSave, suspendSave)
+    return WeeklyFixture(
+        client = client,
+        reports = reportRepository,
+        viewModel = AiWeeklyReportViewModel(
+            inputLoader = WeeklyReportInputLoader { WeeklyReportInputBuildResult.Ready(INPUT) },
+            modelRepository = FlowWeeklyModelRepository(),
+            reportRepository = reportRepository,
+            secretStore = FlowWeeklySecrets,
+            client = client,
+            dateProvider = FlowWeeklyDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-11T03:00:00Z"), ZoneOffset.UTC),
+        ),
+    )
+}
+
+internal data class WeeklyFixture(
     val client: FlowWeeklyClient,
     val reports: FlowWeeklyReportRepository,
     val viewModel: AiWeeklyReportViewModel,
@@ -244,7 +363,7 @@ private val INPUT = WeeklyReportInput(
     json = "{\"coverage\":\"local\"}",
 )
 
-private fun savedReport(start: LocalDate, title: String, id: Long) = AiWeeklyReport(
+internal fun weeklySavedReport(start: LocalDate, title: String, id: Long) = AiWeeklyReport(
     id = id,
     startEpochDay = start.toEpochDay(),
     endEpochDay = start.plusDays(6).toEpochDay(),
@@ -263,7 +382,7 @@ private fun savedReport(start: LocalDate, title: String, id: Long) = AiWeeklyRep
     updatedAt = 1,
 )
 
-private class FlowWeeklyModelRepository : AiModelRepository {
+internal class FlowWeeklyModelRepository : AiModelRepository {
     private val model = AiModelConfig(
         id = 4,
         externalId = "external",
@@ -289,7 +408,7 @@ private class FlowWeeklyModelRepository : AiModelRepository {
     override suspend fun deleteModel(id: Long) = error("unused")
 }
 
-private object FlowWeeklySecrets : AiSecretStore {
+internal object FlowWeeklySecrets : AiSecretStore {
     override suspend fun put(externalId: String, apiKey: String) = Unit
     override suspend fun get(externalId: String): String = "sk-secret"
     override suspend fun maskedSuffix(externalId: String): String = "cret"
@@ -297,7 +416,7 @@ private object FlowWeeklySecrets : AiSecretStore {
     override suspend fun clearAll() = Unit
 }
 
-private class FlowWeeklyClient : AiCompletionClient {
+internal open class FlowWeeklyClient : AiCompletionClient {
     var calls = 0
     override suspend fun completeText(model: AiModelConfig, apiKey: String, systemPrompt: String, userPrompt: String): String {
         calls++
@@ -312,17 +431,35 @@ private class FlowWeeklyClient : AiCompletionClient {
     ) = error("unused")
 }
 
-private class FlowWeeklyReportRepository(
+private class HangingFlowWeeklyClient : FlowWeeklyClient() {
+    val started = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    override suspend fun completeText(model: AiModelConfig, apiKey: String, systemPrompt: String, userPrompt: String): String {
+        calls++
+        started.complete(Unit)
+        release.await()
+        return super.completeText(model, apiKey, systemPrompt, userPrompt)
+    }
+}
+
+internal class FlowWeeklyReportRepository(
     initial: List<AiWeeklyReport>,
     private val failSave: Boolean,
+    private val suspendSave: Boolean = false,
 ) : AiWeeklyReportRepository {
     val reports = MutableStateFlow(initial)
+    val saveStarted = CompletableDeferred<Unit>()
+    val releaseSave = CompletableDeferred<Unit>()
     override fun observeAll(): Flow<List<AiWeeklyReport>> = reports
     override fun observeWeek(startEpochDay: Long): Flow<AiWeeklyReport?> = MutableStateFlow(
         reports.value.firstOrNull { it.startEpochDay == startEpochDay },
     )
     override suspend fun save(report: AiWeeklyReport): Long {
         if (failSave) error("save failed")
+        if (suspendSave) {
+            saveStarted.complete(Unit)
+            releaseSave.await()
+        }
         val id = reports.value.firstOrNull { it.startEpochDay == report.startEpochDay }?.id ?: 99
         reports.value = reports.value.filterNot { it.startEpochDay == report.startEpochDay } + report.copy(id = id)
         return id
@@ -330,7 +467,7 @@ private class FlowWeeklyReportRepository(
     override suspend fun delete(id: Long) = error("unused")
 }
 
-private object FlowWeeklyDateProvider : DeviceDateProvider {
+internal object FlowWeeklyDateProvider : DeviceDateProvider {
     override fun today(): LocalDate = LocalDate.of(2026, 8, 11)
     override val zoneId: ZoneId = ZoneId.of("Asia/Shanghai")
 }

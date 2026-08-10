@@ -7,7 +7,6 @@ import com.habit.app.domain.model.DaySnapshot
 import com.habit.app.domain.model.Habit
 import com.habit.app.domain.model.HabitHistorySnapshot
 import com.habit.app.domain.model.MonthSnapshot
-import com.habit.app.domain.model.AiWeeklyReport
 import com.habit.app.domain.ai.previousCompleteWeek
 import com.habit.app.domain.repository.CalendarRepository
 import com.habit.app.domain.repository.CategoryRepository
@@ -55,17 +54,28 @@ data class WeeklyInsightSummary(
     val status: WeeklyInsightStatus,
     val startDate: LocalDate,
     val endDate: LocalDate,
-    val savedReport: AiWeeklyReport? = null,
+    val detailStartEpochDay: Long? = null,
+    val title: String? = null,
+    val overview: String? = null,
+    val generatedAt: Long? = null,
+)
+
+data class WeeklyInsightSavedData(
+    val startEpochDay: Long,
+    val endEpochDay: Long,
+    val title: String,
+    val overview: String,
+    val generatedAt: Long,
 )
 
 internal fun buildWeeklyInsightSummary(
     now: Instant,
     hasUsableWeeklyModel: Boolean,
-    reports: List<AiWeeklyReport>,
+    savedReports: List<WeeklyInsightSavedData>,
 ): WeeklyInsightSummary {
     val today = now.atZone(HabitTimePolicy.zoneId).toLocalDate()
     val week = previousCompleteWeek(today)
-    val saved = reports.firstOrNull {
+    val saved = savedReports.firstOrNull {
         it.startEpochDay == week.start.toEpochDay() && it.endEpochDay == week.endInclusive.toEpochDay()
     }
     return WeeklyInsightSummary(
@@ -76,7 +86,10 @@ internal fun buildWeeklyInsightSummary(
         },
         startDate = week.start,
         endDate = week.endInclusive,
-        savedReport = saved,
+        detailStartEpochDay = saved?.startEpochDay,
+        title = saved?.title,
+        overview = saved?.overview,
+        generatedAt = saved?.generatedAt,
     )
 }
 

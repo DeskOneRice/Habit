@@ -1,13 +1,13 @@
 package com.habit.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.material3.Text
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,9 +48,9 @@ import com.habit.app.ui.ai.AiSettingsScreen
 import com.habit.app.ui.ai.AiSettingsViewModel
 import com.habit.app.ui.ai.AiWeeklyReportScreen
 import com.habit.app.ui.ai.AiReportHistoryScreen
-import com.habit.app.ui.ai.AiWeeklyReportDetailScreen
-import kotlinx.coroutines.launch
+import com.habit.app.ui.ai.AiWeeklyReportDetailRoute
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -299,11 +299,14 @@ fun HabitNavHost(
             arguments = listOf(navArgument("startEpochDay") { type = NavType.LongType }),
         ) { entry ->
             val startEpochDay = requireNotNull(entry.arguments?.getLong("startEpochDay"))
-            val report by container.aiWeeklyReportRepository.observeWeek(startEpochDay)
-                .collectAsStateWithLifecycle(initialValue = null)
-            report?.let {
-                AiWeeklyReportDetailScreen(it) { navController.popBackStack() }
-            } ?: Text("周报不存在")
+            val reportFlow = remember(startEpochDay) {
+                container.aiWeeklyReportRepository.observeWeek(startEpochDay)
+            }
+            AiWeeklyReportDetailRoute(
+                reportFlow = reportFlow,
+                onBack = { navController.popBackStack() },
+                onRegenerate = { navController.navigate(HabitDestination.AiReports.route) },
+            )
         }
         composable(HabitDestination.AiSettings.route) {
             AiSettingsScreen(

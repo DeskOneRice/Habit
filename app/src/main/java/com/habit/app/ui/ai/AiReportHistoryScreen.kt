@@ -11,21 +11,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.AiWeeklyReport
 import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+sealed interface AiWeeklyReportDetailState {
+    data object Loading : AiWeeklyReportDetailState
+    data class Found(val report: AiWeeklyReport) : AiWeeklyReportDetailState
+    data object NotFound : AiWeeklyReportDetailState
+}
 
 @Composable
 fun AiReportHistoryScreen(
@@ -83,10 +95,39 @@ fun AiReportHistoryScreen(
 fun AiWeeklyReportDetailScreen(
     report: AiWeeklyReport,
     onBack: () -> Unit,
+    onRegenerate: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().testTag("weekly_report_detail_screen")) {
         HabitTopAppBar("周报详情", NavigationMode.BACK, onBack)
-        AiWeeklyReportDocument(report)
+        AiWeeklyReportDocument(report, onRegenerate)
+    }
+}
+
+@Composable
+fun AiWeeklyReportDetailRoute(
+    reportFlow: Flow<AiWeeklyReport?>,
+    onBack: () -> Unit,
+    onRegenerate: () -> Unit,
+) {
+    val detailStates = remember(reportFlow) {
+        reportFlow.map { report ->
+            report?.let(AiWeeklyReportDetailState::Found) ?: AiWeeklyReportDetailState.NotFound
+        }
+    }
+    val state by detailStates.collectAsStateWithLifecycle(initialValue = AiWeeklyReportDetailState.Loading)
+    Column(Modifier.fillMaxSize().testTag("weekly_report_detail_route")) {
+        HabitTopAppBar("周报详情", NavigationMode.BACK, onBack)
+        when (val current = state) {
+            AiWeeklyReportDetailState.Loading -> Box(
+                Modifier.fillMaxSize().testTag("weekly_report_detail_loading"),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            AiWeeklyReportDetailState.NotFound -> Box(
+                Modifier.fillMaxSize().testTag("weekly_report_detail_not_found"),
+                contentAlignment = Alignment.Center,
+            ) { Text("未找到这份周报，它可能已被删除。", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            is AiWeeklyReportDetailState.Found -> AiWeeklyReportDocument(current.report, onRegenerate)
+        }
     }
 }
 

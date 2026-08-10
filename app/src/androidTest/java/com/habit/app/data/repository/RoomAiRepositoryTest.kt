@@ -22,6 +22,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +66,7 @@ class RoomAiRepositoryTest {
     @Test
     fun savingSameWeekReplacesExistingReport() = runTest {
         reports.save(report(startEpochDay = 10, title = "First"))
+        val original = reports.observeWeek(10).first()!!
 
         clock.currentMillis = 2_000
 
@@ -71,9 +74,34 @@ class RoomAiRepositoryTest {
 
         val saved = reports.observeAll().first()
         assertEquals(1, saved.size)
+        assertEquals(original.id, saved.single().id)
         assertEquals("Replacement", saved.single().title)
         assertEquals(1_000, saved.single().createdAt)
         assertEquals(2_000, saved.single().updatedAt)
+    }
+
+    @Test
+    fun failedRoomUpdateRollsBackAndKeepsOldWeeklyReportExactly() = runTest {
+        reports.save(report(startEpochDay = 10, title = "First"))
+        val original = reports.observeWeek(10).first()!!
+        clock.currentMillis = 2_000
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER fail_weekly_report_update BEFORE UPDATE ON ai_weekly_reports BEGIN SELECT RAISE(ABORT, 'forced update failure'); END",
+        )
+
+        try {
+            reports.save(report(startEpochDay = 10, title = "Replacement"))
+            fail("Expected the SQLite trigger to abort the update")
+        } catch (_: Exception) {
+            // The real SQLite failure is the behavior under test.
+        }
+
+        val retained = reports.observeWeek(10).first()!!
+        assertEquals(original.id, retained.id)
+        assertEquals(original.title, retained.title)
+        assertEquals(original.createdAt, retained.createdAt)
+        assertEquals(original.updatedAt, retained.updatedAt)
+        assertTrue(retained.updatedAt < clock.currentMillis)
     }
 
     @Test

@@ -6,8 +6,6 @@ import com.habit.app.domain.model.DayHabit
 import com.habit.app.domain.model.DaySnapshot
 import com.habit.app.domain.model.HabitHistorySnapshot
 import com.habit.app.domain.model.MonthSnapshot
-import com.habit.app.domain.model.AiWeeklyReport
-import com.habit.app.domain.model.WeeklyReportCoverage
 import com.habit.app.domain.stats.HabitStats
 import com.habit.app.domain.stats.MonthStats
 import com.habit.app.testHabit
@@ -23,7 +21,7 @@ class WorkbenchViewModelTest {
         val summary = buildWeeklyInsightSummary(
             now = Instant.parse("2026-08-09T16:30:00Z"),
             hasUsableWeeklyModel = false,
-            reports = emptyList(),
+            savedReports = emptyList(),
         )
 
         assertEquals(WeeklyInsightStatus.NEEDS_MODEL, summary.status)
@@ -36,7 +34,7 @@ class WorkbenchViewModelTest {
         val summary = buildWeeklyInsightSummary(
             now = Instant.parse("2026-08-10T02:00:00Z"),
             hasUsableWeeklyModel = true,
-            reports = emptyList(),
+            savedReports = emptyList(),
         )
 
         assertEquals(WeeklyInsightStatus.READY_TO_GENERATE, summary.status)
@@ -51,11 +49,14 @@ class WorkbenchViewModelTest {
         val summary = buildWeeklyInsightSummary(
             now = Instant.parse("2026-08-11T03:00:00Z"),
             hasUsableWeeklyModel = false,
-            reports = listOf(weeklyReport(LocalDate.of(2026, 7, 27), "更早周报"), report),
+            savedReports = listOf(weeklyReport(LocalDate.of(2026, 7, 27), "更早周报"), report),
         )
 
         assertEquals(WeeklyInsightStatus.SAVED, summary.status)
-        assertEquals(report, summary.savedReport)
+        assertEquals(report.startEpochDay, summary.detailStartEpochDay)
+        assertEquals(report.title, summary.title)
+        assertEquals(report.overview, summary.overview)
+        assertEquals(report.generatedAt, summary.generatedAt)
     }
 
     @Test
@@ -115,22 +116,11 @@ class WorkbenchViewModelTest {
         assertEquals(0, state.longestCurrentStreak)
     }
 
-    private fun weeklyReport(start: LocalDate, title: String) = AiWeeklyReport(
-        id = start.toEpochDay(),
+    private fun weeklyReport(start: LocalDate, title: String) = WeeklyInsightSavedData(
         startEpochDay = start.toEpochDay(),
         endEpochDay = start.plusDays(6).toEpochDay(),
         generatedAt = 1,
-        modelNameSnapshot = "测试模型",
-        modelIdSnapshot = "test-model",
         title = title,
         overview = "概览",
-        habitAnalysis = "习惯",
-        dietAnalysis = "饮食",
-        correlationFinding = "关联",
-        suggestions = listOf("建议一", "建议二", "建议三"),
-        cautions = listOf("提示"),
-        coverage = WeeklyReportCoverage(7, 4, 3, 2, 2, 1),
-        createdAt = 1,
-        updatedAt = 1,
     )
 }
