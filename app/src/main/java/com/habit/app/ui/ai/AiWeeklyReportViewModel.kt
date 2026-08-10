@@ -29,6 +29,7 @@ import com.habit.app.domain.repository.AiWeeklyReportRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import java.time.Clock
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,7 +91,7 @@ class AiWeeklyReportViewModel internal constructor(
     val replacementRequests: StateFlow<AiWeeklyReportReplacementRequest?> = mutableReplacementRequests.asStateFlow()
 
     private val actionGate = AtomicBoolean(false)
-    private var generationJob: Job? = null
+    private val generationJob = AtomicReference<Job?>(null)
 
     init {
         loadLocalData()
@@ -114,9 +115,10 @@ class AiWeeklyReportViewModel internal constructor(
         }
         if (!actionGate.compareAndSet(false, true)) return viewModelScope.launch { }
         mutableReplacementRequests.value = null
-        mutableState.value = AiWeeklyReportState.Generating(stable.input(), stable)
-        return viewModelScope.launch {
-            generationJob = coroutineContext[Job]
+        val generating = AiWeeklyReportState.Generating(stable.input(), stable)
+        val terminalState = AtomicReference<AiWeeklyReportState>(stable)
+        mutableState.value = generating
+        val job = viewModelScope.launch {
             try {
                 val bindingId = coordinator.withBindings {
                     modelRepository.observeBindings().first()
@@ -159,43 +161,48 @@ class AiWeeklyReportViewModel internal constructor(
                     model = completion.model,
                     generatedAt = clock.millis(),
                 )
-                mutableState.value = AiWeeklyReportState.Preview(
+                terminalState.set(AiWeeklyReportState.Preview(
                     input = stable.input(),
                     draft = draft,
                     existingReport = stable.existingReport(),
-                )
+                ))
             } catch (cancelled: CancellationException) {
-                mutableState.value = stable
                 throw cancelled
             } catch (failure: GenerationFailure) {
-                mutableState.value = AiWeeklyReportState.Error(failure.failure, failure.safeMessage, stable)
+                terminalState.set(AiWeeklyReportState.Error(failure.failure, failure.safeMessage, stable))
             } catch (_: WeeklyReportParseException) {
-                mutableState.value = AiWeeklyReportState.Error(
+                terminalState.set(AiWeeklyReportState.Error(
                     AiWeeklyReportFailure.InvalidResponse,
                     MALFORMED_RESPONSE_MESSAGE,
                     stable,
-                )
+                ))
             } catch (failure: AiServiceFailure) {
-                mutableState.value = AiWeeklyReportState.Error(
+                terminalState.set(AiWeeklyReportState.Error(
                     AiWeeklyReportFailure.ServiceUnavailable,
                     safeServiceMessage(failure.kind),
                     stable,
-                )
+                ))
             } catch (_: Exception) {
-                mutableState.value = AiWeeklyReportState.Error(
+                terminalState.set(AiWeeklyReportState.Error(
                     AiWeeklyReportFailure.ServiceUnavailable,
                     GENERATION_FAILURE_MESSAGE,
                     stable,
-                )
-            } finally {
-                generationJob = null
-                actionGate.set(false)
+                ))
             }
-        }.also { generationJob = it }
+        }
+        generationJob.set(job)
+        job.invokeOnCompletion { cause ->
+            if (generationJob.compareAndSet(job, null)) {
+                actionGate.set(false)
+                val completedState = if (cause is CancellationException) stable else terminalState.get()
+                mutableState.compareAndSet(generating, completedState)
+            }
+        }
+        return job
     }
 
     fun cancelGeneration() {
-        generationJob?.cancel()
+        generationJob.get()?.cancel()
     }
 
     fun save(): Job {
@@ -260,8 +267,10 @@ class AiWeeklyReportViewModel internal constructor(
                     mutableState.value = AiWeeklyReportState.Saving(preview)
                     val now = clock.millis()
                     val report = preview.draft.toReport(existing?.id ?: 0, existing?.createdAt ?: now, now)
-                    val id = reportRepository.save(report)
-                    mutableState.value = AiWeeklyReportState.Saved(report.copy(id = id))
+                    reportRepository.save(report)
+                    val persisted = reportRepository.observeWeek(preview.input.startEpochDay).first()
+                        ?: throw IllegalStateException("Saved weekly report is unavailable")
+                    mutableState.value = AiWeeklyReportState.Saved(persisted)
                 }
             } catch (cancelled: CancellationException) {
                 mutableState.value = preview

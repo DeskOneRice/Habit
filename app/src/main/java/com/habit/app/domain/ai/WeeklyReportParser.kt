@@ -27,14 +27,29 @@ object WeeklyReportParser {
         }
         if (objectValue.keys != REQUIRED_FIELDS) throw WeeklyReportParseException()
 
-        val title = objectValue.requiredChineseString("title")
-        val overview = objectValue.requiredChineseString("overview")
-        val habitAnalysis = objectValue.requiredChineseString("habitAnalysis")
-        val dietAnalysis = objectValue.requiredChineseString("dietAnalysis")
-        val correlationFinding = objectValue.requiredChineseString("correlationFinding")
-        val suggestions = objectValue.requiredChineseStrings("suggestions")
-        if (suggestions.size != 3) throw WeeklyReportParseException()
-        val cautions = objectValue.requiredChineseStrings("cautions")
+        val title = objectValue.requiredChineseString("title", WEEKLY_REPORT_TITLE_MAX_LENGTH)
+        val overview = objectValue.requiredChineseString("overview", WEEKLY_REPORT_SECTION_MAX_LENGTH)
+        val habitAnalysis = objectValue.requiredChineseString("habitAnalysis", WEEKLY_REPORT_SECTION_MAX_LENGTH)
+        val dietAnalysis = objectValue.requiredChineseString("dietAnalysis", WEEKLY_REPORT_SECTION_MAX_LENGTH)
+        val correlationFinding = objectValue.requiredChineseString(
+            "correlationFinding",
+            WEEKLY_REPORT_SECTION_MAX_LENGTH,
+        )
+        val suggestions = objectValue.requiredChineseStrings(
+            "suggestions",
+            maxItems = WEEKLY_REPORT_SUGGESTION_COUNT,
+            maxItemLength = WEEKLY_REPORT_LIST_ITEM_MAX_LENGTH,
+        )
+        if (suggestions.size != WEEKLY_REPORT_SUGGESTION_COUNT) throw WeeklyReportParseException()
+        val cautions = objectValue.requiredChineseStrings(
+            "cautions",
+            maxItems = WEEKLY_REPORT_CAUTION_MAX_COUNT,
+            maxItemLength = WEEKLY_REPORT_LIST_ITEM_MAX_LENGTH,
+        )
+        val totalDisplayLength = title.length + overview.length + habitAnalysis.length +
+            dietAnalysis.length + correlationFinding.length + suggestions.sumOf(String::length) +
+            cautions.sumOf(String::length)
+        if (totalDisplayLength > WEEKLY_REPORT_TOTAL_DISPLAY_MAX_LENGTH) throw WeeklyReportParseException()
 
         return AiWeeklyReportDraft(
             startEpochDay = input.startEpochDay,
@@ -76,25 +91,39 @@ object WeeklyReportParser {
     private val FENCED_OBJECT = Regex("""\A```(?:json)?\s*([\s\S]*?)\s*```\z""", RegexOption.IGNORE_CASE)
 }
 
-private fun JsonObject.requiredChineseString(name: String): String {
+private fun JsonObject.requiredChineseString(name: String, maxLength: Int): String {
     val primitive = get(name) as? JsonPrimitive ?: throw WeeklyReportParseException()
     if (!primitive.isString) throw WeeklyReportParseException()
     val value = primitive.content.trim()
-    if (value.isEmpty() || !value.contains(Regex("[\\u3400-\\u4DBF\\u4E00-\\u9FFF]"))) {
+    if (value.isEmpty() || value.length > maxLength || !value.contains(CHINESE_TEXT)) {
         throw WeeklyReportParseException()
     }
     return value
 }
 
-private fun JsonObject.requiredChineseStrings(name: String): List<String> {
+private fun JsonObject.requiredChineseStrings(
+    name: String,
+    maxItems: Int,
+    maxItemLength: Int,
+): List<String> {
     val array = get(name) as? JsonArray ?: throw WeeklyReportParseException()
+    if (array.size > maxItems) throw WeeklyReportParseException()
     return array.map { element ->
         val primitive = element as? JsonPrimitive ?: throw WeeklyReportParseException()
         if (!primitive.isString) throw WeeklyReportParseException()
         val value = primitive.content.trim()
-        if (value.isEmpty() || !value.contains(Regex("[\\u3400-\\u4DBF\\u4E00-\\u9FFF]"))) {
+        if (value.isEmpty() || value.length > maxItemLength || !value.contains(CHINESE_TEXT)) {
             throw WeeklyReportParseException()
         }
         value
     }
 }
+
+internal const val WEEKLY_REPORT_TITLE_MAX_LENGTH = 80
+internal const val WEEKLY_REPORT_SECTION_MAX_LENGTH = 2_000
+internal const val WEEKLY_REPORT_SUGGESTION_COUNT = 3
+internal const val WEEKLY_REPORT_LIST_ITEM_MAX_LENGTH = 300
+internal const val WEEKLY_REPORT_CAUTION_MAX_COUNT = 8
+internal const val WEEKLY_REPORT_TOTAL_DISPLAY_MAX_LENGTH = 10_000
+
+private val CHINESE_TEXT = Regex("[\\u3400-\\u4DBF\\u4E00-\\u9FFF]")

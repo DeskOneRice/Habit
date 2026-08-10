@@ -23,13 +23,18 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -146,6 +151,68 @@ class AiWeeklyReportViewModelTest {
     }
 
     @Test
+    fun immediateCancelBeforeFirstDispatchRestoresReadyAndReleasesGateForGenerateAndSave() = runTest(dispatcher) {
+        val reports = FakeWeeklyReportRepository()
+        val client = FakeWeeklyClient()
+        val viewModel = viewModel(reports = reports, client = client)
+        advanceUntilIdle()
+
+        viewModel.generate()
+        assertTrue(viewModel.state.value is AiWeeklyReportState.Generating)
+        viewModel.cancelGeneration()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value is AiWeeklyReportState.ReadyToGenerate)
+        assertEquals(0, client.calls)
+        viewModel.generate()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value is AiWeeklyReportState.Preview)
+        viewModel.save()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value is AiWeeklyReportState.Saved)
+        assertEquals(1, reports.saveCalls)
+    }
+
+    @Test
+    fun scopeChildCancellationBeforeFirstDispatchDoesNotLeakStateOrGate() = runTest(dispatcher) {
+        val client = FakeWeeklyClient()
+        val viewModel = viewModel(client = client)
+        advanceUntilIdle()
+
+        val scopeChild = viewModel.generate()
+        scopeChild.cancel(CancellationException("viewModel scope cancelled"))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value is AiWeeklyReportState.ReadyToGenerate)
+        viewModel.generate()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value is AiWeeklyReportState.Preview)
+        assertEquals(1, client.calls)
+    }
+
+    @Test
+    fun completionReleasesGateBeforePublishingActionableStateToSynchronousCollector() = runTest(dispatcher) {
+        val client = FakeWeeklyClient()
+        val viewModel = viewModel(client = client)
+        advanceUntilIdle()
+        viewModel.generate()
+        val followUp = launch(
+            UnconfinedTestDispatcher(testScheduler),
+            start = CoroutineStart.UNDISPATCHED,
+        ) {
+            viewModel.state.drop(1).first()
+            viewModel.generate()
+        }
+
+        viewModel.cancelGeneration()
+        advanceUntilIdle()
+
+        followUp.join()
+        assertEquals(1, client.calls)
+        assertTrue(viewModel.state.value is AiWeeklyReportState.Preview)
+    }
+
+    @Test
     fun validResponseCreatesPreviewWithImmutableLocalCoverageAndErrorsNeverExposeRawOrKey() = runTest(dispatcher) {
         val client = FakeWeeklyClient()
         val viewModel = viewModel(client = client)
@@ -210,6 +277,26 @@ class AiWeeklyReportViewModelTest {
         viewModel.save()
         advanceUntilIdle()
         assertEquals(1, reports.saveCalls)
+    }
+
+    @Test
+    fun savedStateUsesRepositoryRoundTripTimestampsAndReplacementPreservesCreatedAt() = runTest(dispatcher) {
+        val existing = existingReport().copy(createdAt = 41, updatedAt = 42)
+        val reports = TickingWeeklyReportRepository(existing, firstTick = 9_000)
+        val viewModel = viewModel(reports = reports)
+        advanceUntilIdle()
+        viewModel.generate()
+        advanceUntilIdle()
+
+        viewModel.save()
+        runCurrent()
+        viewModel.confirmReplacement()
+        advanceUntilIdle()
+
+        val saved = (viewModel.state.value as AiWeeklyReportState.Saved).report
+        assertEquals(reports.current, saved)
+        assertEquals(41L, saved.createdAt)
+        assertEquals(9_000L, saved.updatedAt)
     }
 
     @Test
@@ -374,6 +461,29 @@ private class HangingFirstSaveReportRepository : AiWeeklyReportRepository {
         }
         this.report.value = report.copy(id = 10)
         return 10
+    }
+    override suspend fun delete(id: Long) = error("unused")
+}
+
+private class TickingWeeklyReportRepository(
+    initial: AiWeeklyReport?,
+    firstTick: Long,
+) : AiWeeklyReportRepository {
+    private val report = MutableStateFlow(initial)
+    private var nextTick = firstTick
+    val current: AiWeeklyReport get() = requireNotNull(report.value)
+
+    override fun observeAll(): Flow<List<AiWeeklyReport>> = MutableStateFlow(listOfNotNull(report.value))
+    override fun observeWeek(startEpochDay: Long): Flow<AiWeeklyReport?> = report
+    override suspend fun save(report: AiWeeklyReport): Long {
+        val existing = this.report.value
+        val persisted = report.copy(
+            id = existing?.id ?: 10,
+            createdAt = existing?.createdAt ?: nextTick++,
+            updatedAt = nextTick++,
+        )
+        this.report.value = persisted
+        return persisted.id
     }
     override suspend fun delete(id: Long) = error("unused")
 }

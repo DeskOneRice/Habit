@@ -3,6 +3,10 @@ package com.habit.app.domain.ai
 import com.habit.app.domain.model.AiModelConfig
 import com.habit.app.domain.model.AiTestStatus
 import com.habit.app.domain.model.WeeklyReportCoverage
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -100,6 +104,63 @@ class WeeklyReportParserTest {
     }
 
     @Test
+    fun acceptsEveryExactFieldBoundaryAndExactlyTenThousandDisplayCharacters() {
+        val boundaryObjects = listOf(
+            reportJson(title = chinese(80)),
+            reportJson(overview = chinese(2_000)),
+            reportJson(habitAnalysis = chinese(2_000)),
+            reportJson(dietAnalysis = chinese(2_000)),
+            reportJson(correlationFinding = chinese(2_000)),
+            reportJson(suggestions = List(3) { chinese(300) }),
+            reportJson(cautions = List(8) { chinese(300) }),
+            reportJson(
+                title = chinese(80),
+                overview = chinese(2_000),
+                habitAnalysis = chinese(2_000),
+                dietAnalysis = chinese(2_000),
+                correlationFinding = chinese(2_000),
+                suggestions = List(3) { chinese(300) },
+                cautions = listOf(chinese(300), chinese(300), chinese(300), chinese(120)),
+            ),
+        )
+
+        boundaryObjects.forEach { raw ->
+            WeeklyReportParser.parse(raw, input, model, 1234)
+        }
+    }
+
+    @Test
+    fun rejectsEachFieldItemAndCautionCountOnePastItsLimitWithSafeFailure() {
+        val overLimitObjects = listOf(
+            reportJson(title = chinese(81)),
+            reportJson(overview = chinese(2_001)),
+            reportJson(habitAnalysis = chinese(2_001)),
+            reportJson(dietAnalysis = chinese(2_001)),
+            reportJson(correlationFinding = chinese(2_001)),
+            reportJson(suggestions = listOf(chinese(301), chinese(1), chinese(1))),
+            reportJson(cautions = listOf(chinese(301))),
+            reportJson(cautions = List(9) { chinese(1) }),
+        )
+
+        overLimitObjects.forEach { raw -> assertSafeParseFailure(raw) }
+    }
+
+    @Test
+    fun rejectsTenThousandAndOneTotalDisplayCharactersEvenWhenEveryFieldIsWithinItsLimit() {
+        val raw = reportJson(
+            title = chinese(80),
+            overview = chinese(2_000),
+            habitAnalysis = chinese(2_000),
+            dietAnalysis = chinese(2_000),
+            correlationFinding = chinese(2_000),
+            suggestions = List(3) { chinese(300) },
+            cautions = listOf(chinese(300), chinese(300), chinese(300), chinese(121)),
+        )
+
+        assertSafeParseFailure(raw)
+    }
+
+    @Test
     fun promptForbidsFabricationDiagnosisAndMetricOverridesWhileRequiringCoverageAwareChineseJson() {
         val system = WeeklyReportPrompt.systemPrompt
         val user = WeeklyReportPrompt.userPrompt(input)
@@ -114,4 +175,32 @@ class WeeklyReportParserTest {
         assertEquals(input.json, user.substringAfterLast("\n"))
         assertFalse(user.contains("API Key"))
     }
+
+    private fun assertSafeParseFailure(raw: String) {
+        val thrown = assertThrows(WeeklyReportParseException::class.java) {
+            WeeklyReportParser.parse(raw, input, model, 1234)
+        }
+        assertEquals("模型返回内容无法解析，可更换模型或重试", thrown.message)
+        assertFalse(thrown.message.orEmpty().contains(raw.take(100)))
+    }
+
+    private fun reportJson(
+        title: String = chinese(1),
+        overview: String = chinese(1),
+        habitAnalysis: String = chinese(1),
+        dietAnalysis: String = chinese(1),
+        correlationFinding: String = chinese(1),
+        suggestions: List<String> = List(3) { chinese(1) },
+        cautions: List<String> = listOf(chinese(1)),
+    ): String = buildJsonObject {
+        put("title", title)
+        put("overview", overview)
+        put("habitAnalysis", habitAnalysis)
+        put("dietAnalysis", dietAnalysis)
+        put("correlationFinding", correlationFinding)
+        put("suggestions", buildJsonArray { suggestions.forEach { add(JsonPrimitive(it)) } })
+        put("cautions", buildJsonArray { cautions.forEach { add(JsonPrimitive(it)) } })
+    }.toString()
+
+    private fun chinese(length: Int): String = "中".repeat(length)
 }
