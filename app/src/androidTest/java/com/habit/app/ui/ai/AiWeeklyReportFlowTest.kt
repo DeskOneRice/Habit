@@ -1,8 +1,14 @@
 package com.habit.app.ui.ai
 
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -12,11 +18,16 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.espresso.Espresso.pressBack
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.habit.app.data.ai.AiCompletionClient
 import com.habit.app.data.ai.AiPreparedImage
 import com.habit.app.data.ai.AiSecretStore
@@ -34,6 +45,8 @@ import com.habit.app.domain.repository.AiModelRepository
 import com.habit.app.domain.repository.AiWeeklyReportRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.navigation.HabitDestination
+import com.habit.app.ui.navigation.navigateToAiReportRoot
 import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
 import java.time.Clock
@@ -41,12 +54,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.CompletableDeferred
-import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -130,7 +145,7 @@ class AiWeeklyReportFlowTest {
                     }
                     composable("history") {
                         AiReportHistoryScreen(
-                            reports = listOf(older, newer),
+                            state = AiReportHistoryState.Loaded(listOf(older, newer)),
                             onBack = { navController.popBackStack() },
                             onOpenReport = { navController.navigate("detail/$it") },
                         )
@@ -237,6 +252,25 @@ class AiWeeklyReportFlowTest {
     }
 
     @Test
+    fun delayedHistoryFlowShowsLoadingWithoutEmptyStateFlash() {
+        val release = CompletableDeferred<Unit>()
+        val delayedReports = flow {
+            release.await()
+            emit(listOf(weeklySavedReport(LocalDate.of(2026, 8, 3), "延迟历史周报", 4)))
+        }
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiReportHistoryRoute(delayedReports, onBack = {}, onOpenReport = {})
+            }
+        }
+
+        composeRule.onNodeWithTag("weekly_report_history_loading").assertIsDisplayed()
+        composeRule.onNodeWithText("还没有保存过周报").assertDoesNotExist()
+        composeRule.runOnIdle { release.complete(Unit) }
+        composeRule.onNodeWithText("延迟历史周报").assertIsDisplayed()
+    }
+
+    @Test
     fun missingDetailRouteKeepsStandardBackNavigation() {
         val backCalls = AtomicInteger()
         val missingReport = flowOf<AiWeeklyReport?>(null)
@@ -275,19 +309,32 @@ class AiWeeklyReportFlowTest {
         composeRule.waitUntil(5_000) { client.started.isCompleted }
 
         composeRule.onNodeWithContentDescription("正在生成周报…").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_cancel_generation")
+            .assertHeightIsAtLeast(48.dp)
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("weekly_report_history").assertDoesNotExist()
         composeRule.onNodeWithTag("open_drawer").assertDoesNotExist()
         composeRule.onNodeWithTag("weekly_report_generate").assertDoesNotExist()
         pressBack()
         assertEquals(0, menuCalls.get() + historyCalls.get() + detailCalls.get())
 
+        composeRule.onNodeWithTag("weekly_report_cancel_generation").performClick()
+        composeRule.waitUntil(5_000) {
+            client.cancelled.isCompleted && fixture.viewModel.state.value is AiWeeklyReportState.ReadyToGenerate
+        }
+        composeRule.onNodeWithTag("weekly_report_loading_overlay").assertDoesNotExist()
+        composeRule.onNodeWithTag("weekly_report_history").assertIsDisplayed()
+
         composeRule.runOnIdle { client.release.complete(Unit) }
+        composeRule.onNodeWithTag("weekly_report_generate").performScrollTo().performClick()
+        composeRule.onNodeWithTag("weekly_report_generate_confirm").performClick()
         composeRule.waitUntil(5_000) { fixture.viewModel.state.value is AiWeeklyReportState.Preview }
         composeRule.onNodeWithTag("weekly_report_history").assertIsDisplayed()
         composeRule.onNodeWithTag("weekly_report_save").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { fixture.reports.saveStarted.isCompleted }
 
         composeRule.onNodeWithContentDescription("正在保存周报…").assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_cancel_generation").assertDoesNotExist()
         composeRule.onNodeWithTag("weekly_report_history").assertDoesNotExist()
         composeRule.onNodeWithTag("weekly_report_save").assertDoesNotExist()
         pressBack()
@@ -299,7 +346,25 @@ class AiWeeklyReportFlowTest {
     }
 
     @Test
-    fun damagedHistorySuggestionsShowIncompleteMessageAndRegenerateEntry() {
+    fun oldDamagedHistoryOnlyShowsIncompleteMessageWithoutRegeneration() {
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiWeeklyReportDetailScreen(
+                    report = weeklySavedReport(LocalDate.of(2026, 7, 27), "损坏旧周报", 6)
+                        .copy(suggestions = listOf("只有一", "只有二")),
+                    onBack = {},
+                    onRegenerate = null,
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("周报建议数据不完整。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("weekly_report_regenerate").assertDoesNotExist()
+        composeRule.onAllNodesWithTag("weekly_report_numbered_suggestion").assertCountEquals(0)
+    }
+
+    @Test
+    fun generatableDamagedHistoryShowsRegenerationEntry() {
         val regenerateCalls = AtomicInteger()
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
@@ -316,6 +381,85 @@ class AiWeeklyReportFlowTest {
         composeRule.onNodeWithTag("weekly_report_regenerate").performScrollTo().performClick()
         assertEquals(1, regenerateCalls.get())
         composeRule.onAllNodesWithTag("weekly_report_numbered_suggestion").assertCountEquals(0)
+    }
+
+    @Test
+    fun generatableDetailLosesRegenerationEntryAfterBeijingWeekRollover() {
+        val dateProvider = MutableFlowDateProvider(LocalDate.of(2026, 8, 11))
+        val lifecycleOwner = AtomicReference<LifecycleOwner>()
+        val report = weeklySavedReport(LocalDate.of(2026, 8, 3), "跨周损坏周报", 11)
+            .copy(suggestions = listOf("只有一", "只有二"))
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                val owner = LocalLifecycleOwner.current
+                SideEffect { lifecycleOwner.set(owner) }
+                val canRegenerate = rememberWeeklyReportRegenerationEligibility(report.startEpochDay, dateProvider)
+                AiWeeklyReportDetailScreen(
+                    report = report,
+                    onBack = {},
+                    onRegenerate = if (canRegenerate) ({}) else null,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("weekly_report_regenerate").performScrollTo().assertIsDisplayed()
+        composeRule.runOnIdle {
+            dateProvider.current = LocalDate.of(2026, 8, 18)
+            val lifecycle = lifecycleOwner.get().lifecycle as LifecycleRegistry
+            lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+            lifecycle.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("weekly_report_regenerate").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithText("周报建议数据不完整。").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun regeneratingGeneratableDetailClearsHistoryAndDetailFromBackStack() {
+        val report = weeklySavedReport(LocalDate.of(2026, 8, 3), "可重建损坏周报", 10)
+            .copy(suggestions = listOf("只有一", "只有二"))
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                val navController = rememberNavController()
+                NavHost(navController, startDestination = "workbench") {
+                    composable("workbench") {
+                        Button(
+                            onClick = { navController.navigate(HabitDestination.AiReports.route) },
+                            modifier = Modifier.testTag("enter_reports"),
+                        ) { Text("工作台") }
+                    }
+                    composable(HabitDestination.AiReports.route) {
+                        Button(
+                            onClick = { navController.navigate(HabitDestination.AiReportHistory.route) },
+                            modifier = Modifier.testTag("enter_history"),
+                        ) { Text("综合周报根页") }
+                    }
+                    composable(HabitDestination.AiReportHistory.route) {
+                        Button(
+                            onClick = { navController.navigate("detail") },
+                            modifier = Modifier.testTag("enter_detail"),
+                        ) { Text("历史周报") }
+                    }
+                    composable("detail") {
+                        AiWeeklyReportDetailScreen(
+                            report = report,
+                            onBack = { navController.popBackStack() },
+                            onRegenerate = { navController.navigateToAiReportRoot() },
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("enter_reports").performClick()
+        composeRule.onNodeWithTag("enter_history").performClick()
+        composeRule.onNodeWithTag("enter_detail").performClick()
+        composeRule.onNodeWithTag("weekly_report_regenerate").performScrollTo().performClick()
+        composeRule.onNodeWithText("综合周报根页").assertIsDisplayed()
+        pressBack()
+        composeRule.onNodeWithText("工作台").assertIsDisplayed()
+        composeRule.onNodeWithText("可重建损坏周报").assertDoesNotExist()
     }
 
     private fun fixture(
@@ -434,10 +578,16 @@ internal open class FlowWeeklyClient : AiCompletionClient {
 private class HangingFlowWeeklyClient : FlowWeeklyClient() {
     val started = CompletableDeferred<Unit>()
     val release = CompletableDeferred<Unit>()
+    val cancelled = CompletableDeferred<Unit>()
     override suspend fun completeText(model: AiModelConfig, apiKey: String, systemPrompt: String, userPrompt: String): String {
         calls++
         started.complete(Unit)
-        release.await()
+        try {
+            release.await()
+        } catch (cancelled: CancellationException) {
+            this.cancelled.complete(Unit)
+            throw cancelled
+        }
         return super.completeText(model, apiKey, systemPrompt, userPrompt)
     }
 }
@@ -469,5 +619,10 @@ internal class FlowWeeklyReportRepository(
 
 internal object FlowWeeklyDateProvider : DeviceDateProvider {
     override fun today(): LocalDate = LocalDate.of(2026, 8, 11)
+    override val zoneId: ZoneId = ZoneId.of("Asia/Shanghai")
+}
+
+private class MutableFlowDateProvider(var current: LocalDate) : DeviceDateProvider {
+    override fun today(): LocalDate = current
     override val zoneId: ZoneId = ZoneId.of("Asia/Shanghai")
 }

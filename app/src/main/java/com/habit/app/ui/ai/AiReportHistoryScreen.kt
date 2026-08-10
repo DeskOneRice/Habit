@@ -16,7 +16,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -24,7 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.habit.app.domain.ai.previousCompleteWeek
 import com.habit.app.domain.model.AiWeeklyReport
+import com.habit.app.domain.time.DeviceDateProvider
+import com.habit.app.ui.components.DeviceDateRefreshEffect
 import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
@@ -39,52 +44,93 @@ sealed interface AiWeeklyReportDetailState {
     data object NotFound : AiWeeklyReportDetailState
 }
 
+sealed interface AiReportHistoryState {
+    data object Loading : AiReportHistoryState
+    data class Loaded(val reports: List<AiWeeklyReport>) : AiReportHistoryState
+}
+
+internal fun isGeneratableWeeklyReportWeek(startEpochDay: Long, today: LocalDate): Boolean =
+    startEpochDay == previousCompleteWeek(today).start.toEpochDay()
+
+@Composable
+internal fun rememberWeeklyReportRegenerationEligibility(
+    startEpochDay: Long,
+    dateProvider: DeviceDateProvider,
+): Boolean {
+    var today by remember(dateProvider) { mutableStateOf(dateProvider.today()) }
+    DeviceDateRefreshEffect { today = dateProvider.today() }
+    return isGeneratableWeeklyReportWeek(startEpochDay, today)
+}
+
 @Composable
 fun AiReportHistoryScreen(
-    reports: List<AiWeeklyReport>,
+    state: AiReportHistoryState,
     onBack: () -> Unit,
     onOpenReport: (Long) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().testTag("weekly_report_history_screen")) {
         HabitTopAppBar("历史周报", NavigationMode.BACK, onBack)
-        val sorted = reports.sortedWith(
-            compareByDescending<AiWeeklyReport> { it.startEpochDay }
-                .thenByDescending { it.updatedAt },
-        )
-        if (sorted.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("还没有保存过周报", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 28.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(sorted, key = { it.startEpochDay }) { report ->
-                    HabitCard(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenReport(report.startEpochDay) }
-                            .testTag("weekly_history_${report.startEpochDay}"),
-                    ) {
-                        Text(report.periodLabel(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(5.dp))
-                        Text(report.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            report.overview,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "${report.modelNameSnapshot} · 只读",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+        when (state) {
+            AiReportHistoryState.Loading -> Box(
+                Modifier.fillMaxSize().testTag("weekly_report_history_loading"),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator() }
+            is AiReportHistoryState.Loaded -> HistoryContent(state.reports, onOpenReport)
+        }
+    }
+}
+
+@Composable
+fun AiReportHistoryRoute(
+    reportsFlow: Flow<List<AiWeeklyReport>>,
+    onBack: () -> Unit,
+    onOpenReport: (Long) -> Unit,
+) {
+    val historyStates = remember(reportsFlow) {
+        reportsFlow.map<List<AiWeeklyReport>, AiReportHistoryState>(AiReportHistoryState::Loaded)
+    }
+    val state by historyStates.collectAsStateWithLifecycle(initialValue = AiReportHistoryState.Loading)
+    AiReportHistoryScreen(state, onBack, onOpenReport)
+}
+
+@Composable
+private fun HistoryContent(reports: List<AiWeeklyReport>, onOpenReport: (Long) -> Unit) {
+    val sorted = reports.sortedWith(
+        compareByDescending<AiWeeklyReport> { it.startEpochDay }.thenByDescending { it.updatedAt },
+    )
+    if (sorted.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("还没有保存过周报", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(sorted, key = { it.startEpochDay }) { report ->
+                HabitCard(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenReport(report.startEpochDay) }
+                        .testTag("weekly_history_${report.startEpochDay}"),
+                ) {
+                    Text(report.periodLabel(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(5.dp))
+                    Text(report.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        report.overview,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "${report.modelNameSnapshot} · 只读",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -95,7 +141,7 @@ fun AiReportHistoryScreen(
 fun AiWeeklyReportDetailScreen(
     report: AiWeeklyReport,
     onBack: () -> Unit,
-    onRegenerate: () -> Unit = {},
+    onRegenerate: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().testTag("weekly_report_detail_screen")) {
         HabitTopAppBar("周报详情", NavigationMode.BACK, onBack)
@@ -107,7 +153,7 @@ fun AiWeeklyReportDetailScreen(
 fun AiWeeklyReportDetailRoute(
     reportFlow: Flow<AiWeeklyReport?>,
     onBack: () -> Unit,
-    onRegenerate: () -> Unit,
+    onRegenerate: (() -> Unit)?,
 ) {
     val detailStates = remember(reportFlow) {
         reportFlow.map { report ->

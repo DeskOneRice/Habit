@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
@@ -47,8 +48,9 @@ import com.habit.app.ui.ai.AiModelEditorScreen
 import com.habit.app.ui.ai.AiSettingsScreen
 import com.habit.app.ui.ai.AiSettingsViewModel
 import com.habit.app.ui.ai.AiWeeklyReportScreen
-import com.habit.app.ui.ai.AiReportHistoryScreen
+import com.habit.app.ui.ai.AiReportHistoryRoute
 import com.habit.app.ui.ai.AiWeeklyReportDetailRoute
+import com.habit.app.ui.ai.rememberWeeklyReportRegenerationEligibility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -287,9 +289,8 @@ fun HabitNavHost(
             )
         }
         composable(HabitDestination.AiReportHistory.route) {
-            val reports by container.aiWeeklyReportRepository.observeAll().collectAsStateWithLifecycle(emptyList())
-            AiReportHistoryScreen(
-                reports = reports,
+            AiReportHistoryRoute(
+                reportsFlow = container.aiWeeklyReportRepository.observeAll(),
                 onBack = { navController.popBackStack() },
                 onOpenReport = { navController.navigate(HabitDestination.AiReportDetail.route(it)) },
             )
@@ -302,10 +303,18 @@ fun HabitNavHost(
             val reportFlow = remember(startEpochDay) {
                 container.aiWeeklyReportRepository.observeWeek(startEpochDay)
             }
+            val canRegenerate = rememberWeeklyReportRegenerationEligibility(
+                startEpochDay = startEpochDay,
+                dateProvider = container.dateProvider,
+            )
             AiWeeklyReportDetailRoute(
                 reportFlow = reportFlow,
                 onBack = { navController.popBackStack() },
-                onRegenerate = { navController.navigate(HabitDestination.AiReports.route) },
+                onRegenerate = if (canRegenerate) {
+                    { navController.navigateToAiReportRoot() }
+                } else {
+                    null
+                },
             )
         }
         composable(HabitDestination.AiSettings.route) {
@@ -485,6 +494,14 @@ private class DietSettingsFactory(private val container: AppContainer) : ViewMod
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         DietSettingsViewModel(container.dietPreferencesRepository) as T
+}
+
+internal fun NavHostController.navigateToAiReportRoot() {
+    navigate(HabitDestination.AiReports.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = false }
+        launchSingleTop = true
+        restoreState = false
+    }
 }
 
 private class AiSettingsFactory(private val container: AppContainer) : ViewModelProvider.Factory {

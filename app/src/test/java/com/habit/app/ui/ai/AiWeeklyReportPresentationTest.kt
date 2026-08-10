@@ -1,7 +1,10 @@
 package com.habit.app.ui.ai
 
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiWeeklyReportPresentationTest {
@@ -36,5 +39,31 @@ class AiWeeklyReportPresentationTest {
             WeeklySuggestionPresentation.Incomplete,
             presentWeeklySuggestions(listOf("1. 第一条", "2、   ", "三、第三条")),
         )
+    }
+
+    @Test
+    fun bracketFullWidthAndCircledPrefixesMatchTheirItemIndex() {
+        val presentation = presentWeeklySuggestions(
+            listOf("(1) 第一条", "（2） 第二条", "③ 第三条"),
+        ) as WeeklySuggestionPresentation.Valid
+
+        assertEquals(listOf("第一条", "第二条", "第三条"), presentation.items)
+    }
+
+    @Test
+    fun decimalAndPrefixForAnotherItemArePreserved() {
+        val presentation = presentWeeklySuggestions(
+            listOf("1.5 公里慢跑", "1. 不应剥离错误序号", "3）第三条"),
+        ) as WeeklySuggestionPresentation.Valid
+
+        assertEquals(listOf("1.5 公里慢跑", "1. 不应剥离错误序号", "第三条"), presentation.items)
+    }
+
+    @Test
+    fun onlyPreviousCompleteWeekCanBeRegenerated() {
+        val today = LocalDate.of(2026, 8, 11)
+
+        assertTrue(isGeneratableWeeklyReportWeek(LocalDate.of(2026, 8, 3).toEpochDay(), today))
+        assertFalse(isGeneratableWeeklyReportWeek(LocalDate.of(2026, 7, 27).toEpochDay(), today))
     }
 }

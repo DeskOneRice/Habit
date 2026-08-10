@@ -57,7 +57,9 @@ sealed interface WeeklySuggestionPresentation {
 
 internal fun presentWeeklySuggestions(suggestions: List<String>): WeeklySuggestionPresentation {
     if (suggestions.size != 3) return WeeklySuggestionPresentation.Incomplete
-    val normalized = suggestions.map { it.replace(SUGGESTION_PREFIX, "").trim() }
+    val normalized = suggestions.mapIndexed { index, suggestion ->
+        normalizeSuggestion(suggestion, index + 1)
+    }
     return if (normalized.any(String::isBlank)) WeeklySuggestionPresentation.Incomplete
     else WeeklySuggestionPresentation.Valid(normalized)
 }
@@ -116,8 +118,10 @@ fun AiWeeklyReportScreen(
             }
         }
         if (busy) {
+            val generating = state is AiWeeklyReportState.Generating
             LoadingOverlay(
-                label = if (state is AiWeeklyReportState.Generating) "正在生成周报…" else "正在保存周报…",
+                label = if (generating) "正在生成周报…" else "正在保存周报…",
+                onCancel = if (generating) viewModel::cancelGeneration else null,
             )
         }
     }
@@ -291,38 +295,49 @@ private fun ErrorContent(
 }
 
 @Composable
-private fun LoadingOverlay(label: String) {
+private fun LoadingOverlay(label: String, onCancel: (() -> Unit)?) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.18f))
             .zIndex(10f)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
-                    }
-                }
-            }
-            .clearAndSetSemantics { contentDescription = label }
             .testTag("weekly_report_loading_overlay"),
         contentAlignment = Alignment.Center,
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.18f))
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                        }
+                    }
+                }
+                .clearAndSetSemantics { contentDescription = label },
+        )
         Surface(shape = MaterialTheme.shapes.extraLarge, shadowElevation = 8.dp) {
             Column(
                 Modifier.padding(horizontal = 28.dp, vertical = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(Modifier.clearAndSetSemantics { })
                 Spacer(Modifier.height(12.dp))
-                Text(label, style = MaterialTheme.typography.titleMedium)
+                Text(label, Modifier.clearAndSetSemantics { }, style = MaterialTheme.typography.titleMedium)
+                onCancel?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = it,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("weekly_report_cancel_generation"),
+                    ) { Text("取消生成") }
+                }
             }
         }
     }
 }
 
 @Composable
-internal fun AiWeeklyReportDocument(report: AiWeeklyReport, onRegenerate: () -> Unit = {}) {
+internal fun AiWeeklyReportDocument(report: AiWeeklyReport, onRegenerate: (() -> Unit)? = null) {
     WeeklyReportDocument(report.toDocument(), onRegenerate = onRegenerate)
 }
 
@@ -375,7 +390,10 @@ private fun WeeklyReportDocument(
                             if (index < 2) Spacer(Modifier.height(10.dp))
                         }
                         WeeklySuggestionPresentation.Incomplete -> {
-                            Text("周报建议数据不完整，请重新生成。", color = MaterialTheme.colorScheme.error)
+                            Text(
+                                if (onRegenerate == null) "周报建议数据不完整。" else "周报建议数据不完整，请重新生成。",
+                                color = MaterialTheme.colorScheme.error,
+                            )
                             onRegenerate?.let {
                                 Spacer(Modifier.height(10.dp))
                                 Button(
@@ -487,4 +505,25 @@ private fun coverageText(coverage: WeeklyReportCoverage): String =
 
 private val FULL_DATE = DateTimeFormatter.ofPattern("yyyy年M月d日")
 private val SHORT_DATE = DateTimeFormatter.ofPattern("M月d日")
-private val SUGGESTION_PREFIX = Regex("^\\s*(?:[123][.、)]|[一二三]、)\\s*")
+private fun normalizeSuggestion(suggestion: String, itemNumber: Int): String {
+    val value = suggestion.trim()
+    val chineseNumber = listOf("一", "二", "三")[itemNumber - 1]
+    val circledNumber = listOf("①", "②", "③")[itemNumber - 1]
+    val exactPrefixes = listOf(
+        "($itemNumber)",
+        "（$itemNumber）",
+        "$itemNumber、",
+        "$itemNumber)",
+        "$itemNumber）",
+        "$chineseNumber、",
+        circledNumber,
+    )
+    exactPrefixes.firstOrNull(value::startsWith)?.let { prefix ->
+        return value.removePrefix(prefix).removePrefix("、").trim()
+    }
+    val dotPrefix = "$itemNumber."
+    if (value.startsWith(dotPrefix) && value.getOrNull(dotPrefix.length)?.isDigit() != true) {
+        return value.removePrefix(dotPrefix).trim()
+    }
+    return value
+}
