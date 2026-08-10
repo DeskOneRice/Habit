@@ -44,7 +44,7 @@ class HabitDatabaseMigrationTest {
             ApplicationProvider.getApplicationContext(),
             HabitDatabase::class.java,
             databaseName,
-        ).addMigrations(MIGRATION_2_3, MIGRATION_3_4).build()
+        ).addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
         val sqlite = database.openHelper.writableDatabase
 
         sqlite.query("SELECT description FROM meal_records WHERE id = 1").use { cursor ->
@@ -84,7 +84,7 @@ class HabitDatabaseMigrationTest {
             ApplicationProvider.getApplicationContext(),
             HabitDatabase::class.java,
             databaseName,
-        ).addMigrations(MIGRATION_3_4).build()
+        ).addMigrations(MIGRATION_3_4, MIGRATION_4_5).build()
         val sqlite = database.openHelper.writableDatabase
 
         sqlite.query(
@@ -111,5 +111,33 @@ class HabitDatabaseMigrationTest {
             assertEquals(20L, cursor.getLong(1))
         }
         database.close()
+    }
+
+    @Test
+    fun migrateFourToFivePreservesExistingDataAndCreatesAiTables() {
+        helper.createDatabase(databaseName, 4).apply {
+            execSQL("INSERT INTO categories (id,name,isPreset,isHidden,sortOrder,createdAt,updatedAt) VALUES (1,'Health',0,0,0,1,1)")
+            execSQL("INSERT INTO habits (id,name,iconKey,themeColor,categoryId,startEpochDay,archivedEpochDay,sortOrder,createdAt,updatedAt) VALUES (1,'Walk','walk',0,1,1,NULL,0,1,1)")
+            execSQL("INSERT INTO check_ins (id,habitId,checkInEpochDay,createdAt,updatedAt) VALUES (1,1,1,1,1)")
+            execSQL("INSERT INTO meal_records (id,recordType,mealType,occurredAt,recordEpochDay,description,calculatedCalories,finalCalories,calorieSource,note,createdAt,updatedAt,dietCategoryId) VALUES (1,'MEAL','LUNCH',1,1,'Lunch',100,100,'ITEM_SUM','',1,1,4)")
+            execSQL("INSERT INTO diet_photos (id,mealRecordId,templateId,relativePath,sortOrder,createdAt) VALUES (1,1,NULL,'photos/one.jpg',0,1)")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(databaseName, 5, true, MIGRATION_4_5)
+
+        assertEquals(1, db.query("SELECT COUNT(*) FROM categories").singleInt())
+        assertEquals(1, db.query("SELECT COUNT(*) FROM habits").singleInt())
+        assertEquals(1, db.query("SELECT COUNT(*) FROM check_ins").singleInt())
+        assertEquals(1, db.query("SELECT COUNT(*) FROM meal_records").singleInt())
+        assertEquals(1, db.query("SELECT COUNT(*) FROM diet_photos").singleInt())
+        assertEquals(0, db.query("SELECT COUNT(*) FROM ai_model_configs").singleInt())
+        assertEquals(0, db.query("SELECT COUNT(*) FROM ai_weekly_reports").singleInt())
+        db.close()
+    }
+
+    private fun android.database.Cursor.singleInt(): Int = use {
+        check(moveToFirst())
+        getInt(0)
     }
 }

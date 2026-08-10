@@ -11,6 +11,7 @@ import com.habit.app.data.local.PresetCategoryCallback
 import com.habit.app.data.local.MIGRATION_1_2
 import com.habit.app.data.local.MIGRATION_2_3
 import com.habit.app.data.local.MIGRATION_3_4
+import com.habit.app.data.local.MIGRATION_4_5
 import com.habit.app.data.backup.AndroidBackupDocumentStore
 import com.habit.app.data.backup.BackupFolderMigrator
 import com.habit.app.data.backup.HabitBackupService
@@ -27,6 +28,8 @@ import com.habit.app.data.repository.RoomHabitRepository
 import com.habit.app.data.repository.RoomDietRepository
 import com.habit.app.data.repository.RoomDietTemplateRepository
 import com.habit.app.data.repository.RoomDietCategoryRepository
+import com.habit.app.data.repository.RoomAiModelRepository
+import com.habit.app.data.repository.RoomAiWeeklyReportRepository
 import com.habit.app.data.photos.AndroidDietPhotoStore
 import com.habit.app.domain.repository.CalendarRepository
 import com.habit.app.domain.repository.CategoryRepository
@@ -35,6 +38,8 @@ import com.habit.app.domain.repository.HabitRepository
 import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.repository.DietCategoryRepository
+import com.habit.app.domain.repository.AiModelRepository
+import com.habit.app.domain.repository.AiWeeklyReportRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.SystemDeviceDateProvider
 import java.time.Clock
@@ -56,7 +61,7 @@ class AppContainer(
         applicationContext,
         HabitDatabase::class.java,
         "habit.db",
-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).addCallback(PresetCategoryCallback(clock)).build()
+    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).addCallback(PresetCategoryCallback(clock)).build()
 
     val habitRepository: HabitRepository = RoomHabitRepository(database.habitDao(), clock)
     val categoryRepository: CategoryRepository = RoomCategoryRepository(database, clock)
@@ -73,6 +78,8 @@ class AppContainer(
         dietPhotoStore,
         clock,
     )
+    val aiModelRepository: AiModelRepository = RoomAiModelRepository(database, clock)
+    val aiWeeklyReportRepository: AiWeeklyReportRepository = RoomAiWeeklyReportRepository(database, clock)
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)

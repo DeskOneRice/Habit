@@ -16,6 +16,24 @@ import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.FoodItem
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealType
+import com.habit.app.domain.model.AiCalorieEstimate
+import com.habit.app.domain.model.AiCalorieItemEstimate
+import com.habit.app.domain.model.AiFeature
+import com.habit.app.domain.model.AiFeatureBinding
+import com.habit.app.domain.model.AiModelConfig
+import com.habit.app.domain.model.AiTestStatus
+import com.habit.app.domain.model.AiWeeklyReport
+import com.habit.app.domain.model.WeeklyReportCoverage
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 fun CategoryEntity.toDomain(): Category = Category(
     id = id,
@@ -178,3 +196,157 @@ fun DietTemplateWithDetails.toDomain(): DietTemplate {
         updatedAt = template.updatedAt,
     )
 }
+
+private val aiJson = Json
+
+fun AiModelConfigEntity.toDomain(): AiModelConfig = AiModelConfig(
+    id = id,
+    externalId = externalId,
+    name = name,
+    baseUrl = baseUrl,
+    modelId = modelId,
+    supportsText = supportsText,
+    supportsVision = supportsVision,
+    allowInsecureHttp = allowInsecureHttp,
+    enabled = enabled,
+    lastTestedAt = lastTestedAt,
+    lastTestStatus = AiTestStatus.valueOf(lastTestStatus),
+    lastTestMessage = lastTestMessage,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun AiFeatureBindingEntity.toDomain(): AiFeatureBinding = AiFeatureBinding(
+    feature = AiFeature.valueOf(feature),
+    modelConfigId = modelConfigId,
+    updatedAt = updatedAt,
+)
+
+fun AiWeeklyReportEntity.toDomain(): AiWeeklyReport = AiWeeklyReport(
+    id = id,
+    startEpochDay = startEpochDay,
+    endEpochDay = endEpochDay,
+    generatedAt = generatedAt,
+    modelNameSnapshot = modelNameSnapshot,
+    modelIdSnapshot = modelIdSnapshot,
+    title = title,
+    overview = overview,
+    habitAnalysis = habitAnalysis,
+    dietAnalysis = dietAnalysis,
+    correlationFinding = correlationFinding,
+    suggestions = suggestionsJson.toStringList(),
+    cautions = cautionsJson.toStringList(),
+    coverage = coverageJson.toCoverage(),
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+fun AiWeeklyReport.toEntity(createdAt: Long, updatedAt: Long, id: Long = this.id): AiWeeklyReportEntity =
+    AiWeeklyReportEntity(
+        id = id,
+        startEpochDay = startEpochDay,
+        endEpochDay = endEpochDay,
+        generatedAt = generatedAt,
+        modelNameSnapshot = modelNameSnapshot,
+        modelIdSnapshot = modelIdSnapshot,
+        title = title,
+        overview = overview,
+        habitAnalysis = habitAnalysis,
+        dietAnalysis = dietAnalysis,
+        correlationFinding = correlationFinding,
+        suggestionsJson = suggestions.toJsonArray(),
+        cautionsJson = cautions.toJsonArray(),
+        coverageJson = coverage.toJsonObject(),
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
+
+fun AiCalorieEstimateEntity.toDomain(): AiCalorieEstimate = AiCalorieEstimate(
+    mealRecordId = mealRecordId,
+    generatedAt = generatedAt,
+    modelNameSnapshot = modelNameSnapshot,
+    modelIdSnapshot = modelIdSnapshot,
+    items = itemsJson.toCalorieItems(),
+    totalMinKcal = totalMinKcal,
+    totalMaxKcal = totalMaxKcal,
+    suggestedKcal = suggestedKcal,
+    adoptedKcal = adoptedKcal,
+    wasModified = wasModified,
+    accuracyNote = accuracyNote,
+)
+
+fun AiCalorieEstimate.toEntity(): AiCalorieEstimateEntity = AiCalorieEstimateEntity(
+    mealRecordId = mealRecordId,
+    generatedAt = generatedAt,
+    modelNameSnapshot = modelNameSnapshot,
+    modelIdSnapshot = modelIdSnapshot,
+    itemsJson = items.toCalorieItemsJson(),
+    totalMinKcal = totalMinKcal,
+    totalMaxKcal = totalMaxKcal,
+    suggestedKcal = suggestedKcal,
+    adoptedKcal = adoptedKcal,
+    wasModified = wasModified,
+    accuracyNote = accuracyNote,
+)
+
+private fun List<String>.toJsonArray(): String = aiJson.encodeToString(
+    JsonArray.serializer(),
+    buildJsonArray { this@toJsonArray.forEach { add(JsonPrimitive(it)) } },
+)
+
+private fun String.toStringList(): List<String> = aiJson.parseToJsonElement(this).jsonArray.map {
+    it.jsonPrimitive.content
+}
+
+private fun WeeklyReportCoverage.toJsonObject(): String = aiJson.encodeToString(
+    JsonObject.serializer(),
+    buildJsonObject {
+        put("scheduledHabitCount", JsonPrimitive(scheduledHabitCount))
+        put("completedHabitCount", JsonPrimitive(completedHabitCount))
+        put("dietRecordCount", JsonPrimitive(dietRecordCount))
+        put("dietRecordDays", JsonPrimitive(dietRecordDays))
+        put("knownCalorieRecords", JsonPrimitive(knownCalorieRecords))
+        put("missingCalorieRecords", JsonPrimitive(missingCalorieRecords))
+    },
+)
+
+private fun String.toCoverage(): WeeklyReportCoverage {
+    val json = aiJson.parseToJsonElement(this).jsonObject
+    return WeeklyReportCoverage(
+        scheduledHabitCount = json.requiredInt("scheduledHabitCount"),
+        completedHabitCount = json.requiredInt("completedHabitCount"),
+        dietRecordCount = json.requiredInt("dietRecordCount"),
+        dietRecordDays = json.requiredInt("dietRecordDays"),
+        knownCalorieRecords = json.requiredInt("knownCalorieRecords"),
+        missingCalorieRecords = json.requiredInt("missingCalorieRecords"),
+    )
+}
+
+private fun JsonObject.requiredInt(name: String): Int = getValue(name).jsonPrimitive.int
+
+private fun String.toCalorieItems(): List<AiCalorieItemEstimate> =
+    aiJson.parseToJsonElement(this).jsonArray.map { item ->
+        val json = item.jsonObject
+        AiCalorieItemEstimate(
+            name = json.getValue("name").jsonPrimitive.content,
+            portion = json.getValue("portion").jsonPrimitive.content,
+            minKcal = json.requiredInt("minKcal"),
+            maxKcal = json.requiredInt("maxKcal"),
+        )
+    }
+
+private fun List<AiCalorieItemEstimate>.toCalorieItemsJson(): String = aiJson.encodeToString(
+    JsonArray.serializer(),
+    buildJsonArray {
+        this@toCalorieItemsJson.forEach { item ->
+            add(
+                buildJsonObject {
+                    put("name", JsonPrimitive(item.name))
+                    put("portion", JsonPrimitive(item.portion))
+                    put("minKcal", JsonPrimitive(item.minKcal))
+                    put("maxKcal", JsonPrimitive(item.maxKcal))
+                },
+            )
+        }
+    },
+)

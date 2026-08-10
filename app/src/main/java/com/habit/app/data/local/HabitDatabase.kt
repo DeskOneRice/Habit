@@ -23,8 +23,12 @@ val PRESET_CATEGORIES = listOf("学习", "运动", "生活", "健康", "其他")
         DietTemplateFoodItemEntity::class,
         DietTemplateToppingEntity::class,
         DietPhotoEntity::class,
+        AiModelConfigEntity::class,
+        AiFeatureBindingEntity::class,
+        AiWeeklyReportEntity::class,
+        AiCalorieEstimateEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class HabitDatabase : RoomDatabase() {
@@ -33,6 +37,7 @@ abstract class HabitDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
     abstract fun checkInDao(): CheckInDao
     abstract fun dietDao(): DietDao
+    abstract fun aiDao(): AiDao
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -83,6 +88,18 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
                 WHEN 'COFFEE' THEN 5 WHEN 'MILK_TEA' THEN 6 WHEN 'TEA' THEN 7 WHEN 'FRUIT_DRINK' THEN 8 WHEN 'DAIRY' THEN 9 ELSE 10 END
                 WHERE recordType='BEVERAGE'""".trimIndent(),
         )
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `ai_model_configs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `externalId` TEXT NOT NULL, `name` TEXT NOT NULL, `baseUrl` TEXT NOT NULL, `modelId` TEXT NOT NULL, `supportsText` INTEGER NOT NULL, `supportsVision` INTEGER NOT NULL, `allowInsecureHttp` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `lastTestedAt` INTEGER, `lastTestStatus` TEXT NOT NULL, `lastTestMessage` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_model_configs_externalId` ON `ai_model_configs` (`externalId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `ai_feature_bindings` (`feature` TEXT NOT NULL, `modelConfigId` INTEGER, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`feature`), FOREIGN KEY(`modelConfigId`) REFERENCES `ai_model_configs`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_feature_bindings_modelConfigId` ON `ai_feature_bindings` (`modelConfigId`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `ai_weekly_reports` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochDay` INTEGER NOT NULL, `endEpochDay` INTEGER NOT NULL, `generatedAt` INTEGER NOT NULL, `modelNameSnapshot` TEXT NOT NULL, `modelIdSnapshot` TEXT NOT NULL, `title` TEXT NOT NULL, `overview` TEXT NOT NULL, `habitAnalysis` TEXT NOT NULL, `dietAnalysis` TEXT NOT NULL, `correlationFinding` TEXT NOT NULL, `suggestionsJson` TEXT NOT NULL, `cautionsJson` TEXT NOT NULL, `coverageJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_weekly_reports_startEpochDay` ON `ai_weekly_reports` (`startEpochDay`)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `ai_calorie_estimates` (`mealRecordId` INTEGER NOT NULL, `generatedAt` INTEGER NOT NULL, `modelNameSnapshot` TEXT NOT NULL, `modelIdSnapshot` TEXT NOT NULL, `itemsJson` TEXT NOT NULL, `totalMinKcal` INTEGER NOT NULL, `totalMaxKcal` INTEGER NOT NULL, `suggestedKcal` INTEGER NOT NULL, `adoptedKcal` INTEGER NOT NULL, `wasModified` INTEGER NOT NULL, `accuracyNote` TEXT NOT NULL, PRIMARY KEY(`mealRecordId`), FOREIGN KEY(`mealRecordId`) REFERENCES `meal_records`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
     }
 }
 

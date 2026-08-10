@@ -263,3 +263,78 @@ data class DietPhotoEntity(
     val sortOrder: Int,
     val createdAt: Long,
 )
+
+@Entity(tableName = "ai_model_configs", indices = [Index(value = ["externalId"], unique = true)])
+data class AiModelConfigEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val externalId: String,
+    val name: String,
+    val baseUrl: String,
+    val modelId: String,
+    val supportsText: Boolean,
+    val supportsVision: Boolean,
+    val allowInsecureHttp: Boolean,
+    val enabled: Boolean,
+    val lastTestedAt: Long?,
+    val lastTestStatus: String,
+    val lastTestMessage: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "ai_feature_bindings",
+    foreignKeys = [ForeignKey(
+        entity = AiModelConfigEntity::class,
+        parentColumns = ["id"], childColumns = ["modelConfigId"],
+        onDelete = ForeignKey.SET_NULL,
+    )],
+    indices = [Index("modelConfigId")],
+)
+data class AiFeatureBindingEntity(
+    @PrimaryKey val feature: String,
+    val modelConfigId: Long?,
+    val updatedAt: Long,
+)
+
+@Entity(tableName = "ai_weekly_reports", indices = [Index(value = ["startEpochDay"], unique = true)])
+data class AiWeeklyReportEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startEpochDay: Long,
+    val endEpochDay: Long,
+    val generatedAt: Long,
+    val modelNameSnapshot: String,
+    val modelIdSnapshot: String,
+    val title: String,
+    val overview: String,
+    val habitAnalysis: String,
+    val dietAnalysis: String,
+    val correlationFinding: String,
+    val suggestionsJson: String,
+    val cautionsJson: String,
+    val coverageJson: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "ai_calorie_estimates",
+    foreignKeys = [ForeignKey(
+        entity = MealRecordEntity::class,
+        parentColumns = ["id"], childColumns = ["mealRecordId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+)
+data class AiCalorieEstimateEntity(
+    @PrimaryKey val mealRecordId: Long,
+    val generatedAt: Long,
+    val modelNameSnapshot: String,
+    val modelIdSnapshot: String,
+    val itemsJson: String,
+    val totalMinKcal: Int,
+    val totalMaxKcal: Int,
+    val suggestedKcal: Int,
+    val adoptedKcal: Int,
+    val wasModified: Boolean,
+    val accuracyNote: String,
+)
