@@ -15,6 +15,7 @@ fun normalizedChatCompletionsUrl(baseUrl: String, allowInsecureHttp: Boolean): S
     val uri = URI(baseUrl.trim())
     require(uri.scheme == "https" || uri.scheme == "http") { "仅支持 HTTP 或 HTTPS 地址" }
     require(uri.host != null && uri.userInfo == null && uri.fragment == null) { "API 地址格式不正确" }
+    require(uri.rawQuery == null) { "API 地址不能包含查询参数" }
     require(uri.scheme != "http" || allowInsecureHttp) { "HTTP 地址需要明确授权" }
     val normalized = baseUrl.trim().trimEnd('/')
     return if (normalized.endsWith("/chat/completions")) normalized else "$normalized/chat/completions"

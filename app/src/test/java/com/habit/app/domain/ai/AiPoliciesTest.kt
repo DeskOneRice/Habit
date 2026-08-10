@@ -23,6 +23,23 @@ class AiPoliciesTest {
     }
 
     @Test
+    fun existingChatCompletionsPathIsNotAppendedTwice() {
+        assertEquals(
+            "https://api.example.com/v1/chat/completions",
+            normalizedChatCompletionsUrl("https://api.example.com/v1/chat/completions", false),
+        )
+    }
+
+    @Test
+    fun queryBearingUrlIsRejected() {
+        try {
+            normalizedChatCompletionsUrl("https://api.example.com/v1?version=1", false)
+            fail("Expected query-bearing URL to be rejected")
+        } catch (_: IllegalArgumentException) {
+        }
+    }
+
+    @Test
     fun httpRequiresExplicitPerModelConsent() {
         try {
             normalizedChatCompletionsUrl("http://192.168.1.2:11434/v1", false)
