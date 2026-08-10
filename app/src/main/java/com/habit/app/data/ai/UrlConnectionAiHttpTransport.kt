@@ -15,20 +15,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
-class UrlConnectionAiHttpTransport(
+class UrlConnectionAiHttpTransport internal constructor(
     private val connectionFactory: (URL) -> HttpURLConnection = { url ->
         url.openConnection() as HttpURLConnection
     },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val onConnectionPublished: (() -> Unit)? = null,
 ) : AiHttpTransport {
     override suspend fun execute(request: AiHttpRequest): AiHttpResponse = withContext(dispatcher) {
-        val activeConnection = AtomicReference<HttpURLConnection?>()
+        val state = AtomicReference<ConnectionState>(ConnectionState.Waiting)
         suspendCancellableCoroutine { continuation ->
-            continuation.invokeOnCancellation {
-                activeConnection.getAndSet(null)?.disconnect()
-            }
+            continuation.invokeOnCancellation { cancel(state) }
             try {
-                val response = executeBlocking(request, activeConnection) { continuation.isActive }
+                val response = executeBlocking(request, state)
                 if (continuation.isActive) continuation.resume(response)
             } catch (cancellation: CancellationException) {
                 if (continuation.isActive) continuation.resumeWithException(cancellation)
@@ -51,25 +50,22 @@ class UrlConnectionAiHttpTransport(
                     continuation.resumeWithException(invalidTransportResponse("Invalid transport response"))
                 }
             } finally {
-                activeConnection.getAndSet(null)?.disconnect()
+                cancel(state)
             }
         }
     }
 
     private fun executeBlocking(
         request: AiHttpRequest,
-        activeConnection: AtomicReference<HttpURLConnection?>,
-        isActive: () -> Boolean,
+        state: AtomicReference<ConnectionState>,
     ): AiHttpResponse {
         var currentUrl = URL(request.url)
         repeat(MAX_REDIRECTS + 1) { redirectCount ->
             val connection = connectionFactory(currentUrl)
-            activeConnection.set(connection)
-            if (!isActive()) {
-                if (activeConnection.compareAndSet(connection, null)) connection.disconnect()
-                throw CancellationException("AI HTTP request cancelled")
-            }
             try {
+                val published = publish(state, connection)
+                onConnectionPublished?.invoke()
+                startIo(state, published)
                 configure(connection, request)
                 connection.outputStream.use { it.write(request.body) }
                 val statusCode = connection.responseCode
@@ -98,10 +94,61 @@ class UrlConnectionAiHttpTransport(
                     return AiHttpResponse(statusCode, body)
                 }
             } finally {
-                if (activeConnection.compareAndSet(connection, null)) connection.disconnect()
+                finishConnection(state, connection)
+                connection.disconnect()
             }
         }
         throw invalidTransportResponse("Too many redirects")
+    }
+
+    private fun publish(
+        state: AtomicReference<ConnectionState>,
+        connection: HttpURLConnection,
+    ): ConnectionState.Published {
+        val published = ConnectionState.Published(connection)
+        if (!state.compareAndSet(ConnectionState.Waiting, published)) {
+            connection.disconnect()
+            throw CancellationException("AI HTTP request cancelled")
+        }
+        return published
+    }
+
+    private fun startIo(state: AtomicReference<ConnectionState>, published: ConnectionState.Published) {
+        if (!state.compareAndSet(published, ConnectionState.IoStarted(published.connection))) {
+            published.connection.disconnect()
+            throw CancellationException("AI HTTP request cancelled")
+        }
+    }
+
+    private fun finishConnection(state: AtomicReference<ConnectionState>, connection: HttpURLConnection) {
+        while (true) {
+            when (val current = state.get()) {
+                is ConnectionState.Published -> if (current.connection !== connection) return else {
+                    if (state.compareAndSet(current, ConnectionState.Waiting)) return
+                }
+                is ConnectionState.IoStarted -> if (current.connection !== connection) return else {
+                    if (state.compareAndSet(current, ConnectionState.Waiting)) return
+                }
+                ConnectionState.Cancelled, ConnectionState.Waiting -> return
+            }
+        }
+    }
+
+    private fun cancel(state: AtomicReference<ConnectionState>) {
+        while (true) {
+            when (val current = state.get()) {
+                ConnectionState.Cancelled -> return
+                ConnectionState.Waiting -> if (state.compareAndSet(current, ConnectionState.Cancelled)) return
+                is ConnectionState.Published -> if (state.compareAndSet(current, ConnectionState.Cancelled)) {
+                    current.connection.disconnect()
+                    return
+                }
+                is ConnectionState.IoStarted -> if (state.compareAndSet(current, ConnectionState.Cancelled)) {
+                    current.connection.disconnect()
+                    return
+                }
+            }
+        }
     }
 
     private fun configure(connection: HttpURLConnection, request: AiHttpRequest) {
@@ -149,5 +196,12 @@ class UrlConnectionAiHttpTransport(
     private companion object {
         const val MAX_REDIRECTS = 5
         val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+    }
+
+    private sealed interface ConnectionState {
+        data object Waiting : ConnectionState
+        data class Published(val connection: HttpURLConnection) : ConnectionState
+        data class IoStarted(val connection: HttpURLConnection) : ConnectionState
+        data object Cancelled : ConnectionState
     }
 }

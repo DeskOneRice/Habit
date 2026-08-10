@@ -39,6 +39,7 @@ fun mapAiHttpFailure(statusCode: Int, responseBody: String, apiKey: String): AiS
 fun redactAiDiagnostic(diagnostic: String, apiKey: String): String {
     var safe = diagnostic
     if (apiKey.isNotEmpty()) safe = safe.replace(apiKey, "[REDACTED]")
+    safe = JSON_AUTHORIZATION_SHAPE.replace(safe, "[REDACTED]")
     safe = AUTHORIZATION_SHAPE.replace(safe, "[REDACTED]")
     safe = BEARER_SHAPE.replace(safe, "[REDACTED]")
     return safe
@@ -54,7 +55,12 @@ private fun isVisionRejection(statusCode: Int, responseBody: String): Boolean {
     return mentionsVision && rejects
 }
 
-private val AUTHORIZATION_SHAPE = Regex(
-    pattern = "(?i)authorization\\s*[:=]\\s*(?:bearer\\s+)?[^\\s,;]+",
+private val JSON_AUTHORIZATION_SHAPE = Regex(
+    pattern = "(?i)\"authorization\"\\s*:\\s*\"[^\"]*\"",
 )
-private val BEARER_SHAPE = Regex(pattern = "(?i)bearer\\s+[^\\s,;]+")
+private val AUTHORIZATION_SHAPE = Regex(
+    pattern = "(?i)\\bauthorization\\b\\s*[:=]\\s*(?:(?:basic|bearer)\\s+)?(?:\"[^\"]*\"|'[^']*'|[^\\s,;}]+)",
+)
+private val BEARER_SHAPE = Regex(
+    pattern = "(?i)\\bbearer\\s+(?:\"[^\"]*\"|'[^']*'|[^\\s,;}]*)",
+)

@@ -7,6 +7,7 @@ import java.net.SocketTimeoutException
 import java.util.Base64
 import java.util.concurrent.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -148,12 +149,15 @@ class OpenAiCompatibleClient(
 
     private fun parseResponse(body: ByteArray): String {
         val content = try {
-            JSON.parseToJsonElement(body.decodeToString())
+            val element = JSON.parseToJsonElement(body.decodeToString())
                 .jsonObject.getValue("choices")
                 .jsonArray.first()
                 .jsonObject.getValue("message")
                 .jsonObject.getValue("content")
-                .jsonPrimitive.content
+            val primitive = element as? JsonPrimitive
+                ?: throw IllegalArgumentException("Completion content is not primitive")
+            if (!primitive.isString) throw IllegalArgumentException("Completion content is not a string")
+            primitive.content
         } catch (_: Exception) {
             throw invalidResponse("Malformed Chat Completions response")
         }

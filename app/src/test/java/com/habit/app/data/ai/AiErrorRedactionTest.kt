@@ -64,4 +64,23 @@ class AiErrorRedactionTest {
         assertFalse(redacted.contains("Bearer", ignoreCase = true))
         assertTrue(redacted.contains("harmless"))
     }
+
+    @Test
+    fun redactionCoversAuthorizationAndBearerSyntaxMatrix() {
+        val diagnostics = listOf(
+            "Authorization: Basic credential",
+            "authorization = Basic credential",
+            "AUTHORIZATION:\tBEARER\tcredential",
+            "\"Authorization\":\"Bearer credential\"",
+            "{ \"authorization\" : \"Basic credential\" }",
+            "bare bEaReR   credential tail",
+            "current-key-value",
+        )
+
+        diagnostics.forEach { diagnostic ->
+            val redacted = redactAiDiagnostic(diagnostic, "current-key-value")
+            assertFalse("credential leaked from: $diagnostic", redacted.contains("credential"))
+            assertFalse("current key leaked", redacted.contains("current-key-value"))
+        }
+    }
 }

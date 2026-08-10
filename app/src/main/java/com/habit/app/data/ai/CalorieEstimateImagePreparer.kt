@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -17,29 +18,44 @@ import kotlinx.coroutines.withContext
 
 const val MAX_PREPARED_AI_IMAGE_BYTES = 6L * 1024 * 1024
 
-class PreparedAiImage(
+class PreparedAiImage internal constructor(
     val file: File,
     val mimeType: String = "image/jpeg",
+    private val deleteFile: (File) -> Boolean = { it.delete() },
 ) : Closeable {
     fun asAiPreparedImage(): AiPreparedImage = AiPreparedImage(mimeType, file.readBytes())
 
     override fun close() {
-        if (file.exists() && !file.delete()) {
-            throw IOException("Unable to delete temporary AI image")
+        repeat(TEMP_DELETE_ATTEMPTS) {
+            if (!file.exists() || deleteFile(file)) return
         }
+        throw IOException("Unable to delete temporary AI image")
+    }
+
+    private companion object {
+        const val TEMP_DELETE_ATTEMPTS = 3
     }
 }
 
-class CalorieEstimateImagePreparer(
+class CalorieEstimateImagePreparer internal constructor(
     private val temporaryDirectory: File,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val afterTemporaryFileCreated: ((File) -> Unit)? = null,
+    private val bitmapStageObserver: ((String, Bitmap) -> Unit)? = null,
+    private val maxTotalBytes: Long = MAX_PREPARED_AI_IMAGE_BYTES,
+    private val onPayloadRescale: (() -> Unit)? = null,
+    private val encodeJpeg: (Bitmap, OutputStream) -> Boolean = { bitmap, output ->
+        bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
+    },
 ) {
     suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage> {
         val prepared = mutableListOf<PreparedAiImage>()
         var delivered = false
+        var pendingFailure: Throwable? = null
         try {
             val result = withContext(dispatcher) {
                 require(sourceFiles.size in 1..3) { "AI image count must be between 1 and 3" }
+                require(maxTotalBytes > 0) { "AI image payload limit must be positive" }
                 check(temporaryDirectory.exists() || temporaryDirectory.mkdirs()) {
                     "Unable to create AI image temporary directory"
                 }
@@ -47,20 +63,31 @@ class CalorieEstimateImagePreparer(
                     currentCoroutineContext().ensureActive()
                     require(source.isFile) { "AI image source does not exist" }
                     val bitmap = decodeOrientedAndBounded(source)
-                    val output = File.createTempFile("habit-ai-", ".jpg", temporaryDirectory)
                     try {
-                        output.outputStream().buffered().use { stream ->
-                            check(bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)) {
-                                "Unable to encode AI image"
+                        val output = File.createTempFile("habit-ai-", ".jpg", temporaryDirectory)
+                        var owner: PreparedAiImage? = null
+                        try {
+                            afterTemporaryFileCreated?.invoke(output)
+                            currentCoroutineContext().ensureActive()
+                            owner = PreparedAiImage(output)
+                            try {
+                                prepared.add(owner)
+                            } catch (failure: Throwable) {
+                                closeAfterFailure(owner, failure)
+                                throw failure
                             }
+                            output.outputStream().buffered().use { stream ->
+                                check(encodeJpeg(bitmap, stream)) {
+                                    "Unable to encode AI image"
+                                }
+                            }
+                        } catch (failure: Throwable) {
+                            if (owner == null) deleteAfterFailure(output, failure)
+                            throw failure
                         }
-                    } catch (failure: Throwable) {
-                        output.delete()
-                        throw failure
                     } finally {
-                        bitmap.recycle()
+                        if (!bitmap.isRecycled) bitmap.recycle()
                     }
-                    prepared += PreparedAiImage(output)
                 }
                 enforceTotalPayloadLimit(prepared)
                 currentCoroutineContext().ensureActive()
@@ -68,8 +95,11 @@ class CalorieEstimateImagePreparer(
             }
             delivered = true
             return result
+        } catch (failure: Throwable) {
+            pendingFailure = failure
+            throw failure
         } finally {
-            if (!delivered) prepared.forEach { runCatching { it.close() } }
+            if (!delivered) cleanupUndelivered(prepared, pendingFailure)
         }
     }
 
@@ -89,21 +119,31 @@ class CalorieEstimateImagePreparer(
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             },
         ) ?: throw IllegalArgumentException("Unable to decode AI image")
-
-        val oriented = applyExifOrientation(decoded, readExifOrientation(source))
-        if (oriented !== decoded) decoded.recycle()
-        val longestEdge = max(oriented.width, oriented.height)
-        if (longestEdge <= MAX_LONG_EDGE) return oriented
-
-        val scale = MAX_LONG_EDGE.toFloat() / longestEdge
-        val scaled = Bitmap.createScaledBitmap(
-            oriented,
-            max(1, (oriented.width * scale).roundToInt()),
-            max(1, (oriented.height * scale).roundToInt()),
-            true,
-        )
-        if (scaled !== oriented) oriented.recycle()
-        return scaled
+        var oriented: Bitmap? = null
+        var scaled: Bitmap? = null
+        var result: Bitmap? = null
+        try {
+            bitmapStageObserver?.invoke(BITMAP_STAGE_DECODED, decoded)
+            oriented = applyExifOrientation(decoded, readExifOrientation(source))
+            val longestEdge = max(oriented.width, oriented.height)
+            result = if (longestEdge <= MAX_LONG_EDGE) {
+                oriented
+            } else {
+                val scale = MAX_LONG_EDGE.toFloat() / longestEdge
+                scaled = Bitmap.createScaledBitmap(
+                    oriented,
+                    max(1, (oriented.width * scale).roundToInt()),
+                    max(1, (oriented.height * scale).roundToInt()),
+                    true,
+                )
+                scaled
+            }
+            return requireNotNull(result)
+        } finally {
+            recycleUnlessReturned(scaled, result)
+            if (oriented !== scaled) recycleUnlessReturned(oriented, result)
+            if (decoded !== oriented && decoded !== scaled) recycleUnlessReturned(decoded, result)
+        }
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
@@ -131,27 +171,29 @@ class CalorieEstimateImagePreparer(
 
     private fun enforceTotalPayloadLimit(images: List<PreparedAiImage>) {
         var total = images.sumOf { it.file.length() }
-        while (total > MAX_PREPARED_AI_IMAGE_BYTES) {
-            val ratio = sqrt(MAX_PREPARED_AI_IMAGE_BYTES.toDouble() / total) * PAYLOAD_HEADROOM
+        while (total > maxTotalBytes) {
+            onPayloadRescale?.invoke()
+            val ratio = sqrt(maxTotalBytes.toDouble() / total) * PAYLOAD_HEADROOM
             val scale = ratio.coerceIn(MIN_RESCALE_FACTOR, MAX_RESCALE_FACTOR)
             images.forEach { image ->
                 val bitmap = BitmapFactory.decodeFile(image.file.path)
                     ?: throw IllegalArgumentException("Unable to decode prepared AI image")
-                val scaled = Bitmap.createScaledBitmap(
-                    bitmap,
-                    max(1, (bitmap.width * scale).roundToInt()),
-                    max(1, (bitmap.height * scale).roundToInt()),
-                    true,
-                )
+                var scaled: Bitmap? = null
                 try {
+                    scaled = Bitmap.createScaledBitmap(
+                        bitmap,
+                        max(1, (bitmap.width * scale).roundToInt()),
+                        max(1, (bitmap.height * scale).roundToInt()),
+                        true,
+                    )
                     image.file.outputStream().buffered().use { stream ->
-                        check(scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)) {
+                        check(encodeJpeg(requireNotNull(scaled), stream)) {
                             "Unable to re-encode AI image"
                         }
                     }
                 } finally {
-                    if (scaled !== bitmap) bitmap.recycle()
-                    scaled.recycle()
+                    recycleUnlessReturned(scaled, null)
+                    if (bitmap !== scaled) recycleUnlessReturned(bitmap, null)
                 }
             }
             val reducedTotal = images.sumOf { it.file.length() }
@@ -173,15 +215,16 @@ class CalorieEstimateImagePreparer(
         }
         if (prefix.size < 4 || prefix.u8(0) != 0xff || prefix.u8(1) != 0xd8) return 1
         var markerStart = 2
-        while (markerStart + 4 <= prefix.size) {
+        while (markerStart >= 0 && markerStart <= prefix.size - 4) {
             if (prefix.u8(markerStart) != 0xff) {
                 markerStart++
                 continue
             }
             val marker = prefix.u8(markerStart + 1)
             if (marker == 0xda || marker == 0xd9) break
-            val segmentLength = prefix.u16BigEndian(markerStart + 2)
-            if (segmentLength < 2 || markerStart + 2 + segmentLength > prefix.size) break
+            val segmentLength = prefix.u16(markerStart + 2, littleEndian = false) ?: break
+            val segmentBase = markerStart + 2
+            if (segmentLength < 2 || segmentBase > prefix.size - segmentLength) break
             if (marker == 0xe1) {
                 parseExifOrientation(prefix, markerStart + 4, segmentLength - 2)?.let { return it }
             }
@@ -191,9 +234,11 @@ class CalorieEstimateImagePreparer(
     }
 
     private fun parseExifOrientation(bytes: ByteArray, payloadStart: Int, payloadLength: Int): Int? {
-        if (payloadLength < 14 || payloadStart + payloadLength > bytes.size) return null
+        if (payloadStart < 0 || payloadLength < 14 || payloadStart > bytes.size - payloadLength) return null
         if (!bytes.matches(payloadStart, EXIF_SIGNATURE)) return null
-        val tiffStart = payloadStart + EXIF_SIGNATURE.size
+        val payloadEnd = payloadStart.toLong() + payloadLength.toLong()
+        val tiffStart = payloadStart.toLong() + EXIF_SIGNATURE.size.toLong()
+        if (!hasRange(tiffStart, 8, payloadEnd)) return null
         val littleEndian = when {
             bytes.u8(tiffStart) == 'I'.code && bytes.u8(tiffStart + 1) == 'I'.code -> true
             bytes.u8(tiffStart) == 'M'.code && bytes.u8(tiffStart + 1) == 'M'.code -> false
@@ -201,15 +246,16 @@ class CalorieEstimateImagePreparer(
         }
         if (bytes.u16(tiffStart + 2, littleEndian) != 42) return null
         val ifdOffset = bytes.u32(tiffStart + 4, littleEndian) ?: return null
+        if (ifdOffset > payloadEnd - tiffStart) return null
         val ifdStart = tiffStart + ifdOffset
-        if (ifdStart + 2 > payloadStart + payloadLength) return null
-        val entryCount = bytes.u16(ifdStart, littleEndian)
+        if (!hasRange(ifdStart, 2, payloadEnd)) return null
+        val entryCount = bytes.u16(ifdStart, littleEndian) ?: return null
         repeat(entryCount) { index ->
-            val entry = ifdStart + 2 + index * 12
-            if (entry + 12 > payloadStart + payloadLength) return null
+            val entry = ifdStart + 2L + index.toLong() * 12L
+            if (!hasRange(entry, 12, payloadEnd)) return null
             if (bytes.u16(entry, littleEndian) == ORIENTATION_TAG &&
                 bytes.u16(entry + 2, littleEndian) == SHORT_TYPE &&
-                bytes.u32(entry + 4, littleEndian) == 1
+                bytes.u32(entry + 4, littleEndian) == 1L
             ) {
                 return bytes.u16(entry + 8, littleEndian).takeIf { it in 1..8 }
             }
@@ -217,35 +263,74 @@ class CalorieEstimateImagePreparer(
         return null
     }
 
+    private fun ByteArray.u8(offset: Long): Int? =
+        if (offset < 0 || offset >= size.toLong()) null else get(offset.toInt()).toInt() and 0xff
+
     private fun ByteArray.u8(offset: Int): Int = get(offset).toInt() and 0xff
 
-    private fun ByteArray.u16BigEndian(offset: Int): Int = (u8(offset) shl 8) or u8(offset + 1)
-
-    private fun ByteArray.u16(offset: Int, littleEndian: Boolean): Int = if (littleEndian) {
-        u8(offset) or (u8(offset + 1) shl 8)
-    } else {
-        (u8(offset) shl 8) or u8(offset + 1)
+    private fun ByteArray.u16(offset: Long, littleEndian: Boolean): Int? {
+        if (!hasRange(offset, 2, size.toLong())) return null
+        val first = u8(offset) ?: return null
+        val second = u8(offset + 1) ?: return null
+        return if (littleEndian) first or (second shl 8) else (first shl 8) or second
     }
 
-    private fun ByteArray.u32(offset: Int, littleEndian: Boolean): Int? {
-        if (offset < 0 || offset + 4 > size) return null
+    private fun ByteArray.u16(offset: Int, littleEndian: Boolean): Int? =
+        u16(offset.toLong(), littleEndian)
+
+    private fun ByteArray.u32(offset: Long, littleEndian: Boolean): Long? {
+        if (!hasRange(offset, 4, size.toLong())) return null
         val value = if (littleEndian) {
-            u8(offset).toLong() or
-                (u8(offset + 1).toLong() shl 8) or
-                (u8(offset + 2).toLong() shl 16) or
-                (u8(offset + 3).toLong() shl 24)
+            u8(offset)!!.toLong() or
+                (u8(offset + 1)!!.toLong() shl 8) or
+                (u8(offset + 2)!!.toLong() shl 16) or
+                (u8(offset + 3)!!.toLong() shl 24)
         } else {
-            (u8(offset).toLong() shl 24) or
-                (u8(offset + 1).toLong() shl 16) or
-                (u8(offset + 2).toLong() shl 8) or
-                u8(offset + 3).toLong()
+            (u8(offset)!!.toLong() shl 24) or
+                (u8(offset + 1)!!.toLong() shl 16) or
+                (u8(offset + 2)!!.toLong() shl 8) or
+                u8(offset + 3)!!.toLong()
         }
-        return value.takeIf { it <= Int.MAX_VALUE }?.toInt()
+        return value
     }
 
     private fun ByteArray.matches(offset: Int, expected: ByteArray): Boolean =
-        offset >= 0 && offset + expected.size <= size &&
+        offset >= 0 && offset <= size - expected.size &&
             expected.indices.all { this[offset + it] == expected[it] }
+
+    private fun hasRange(offset: Long, length: Int, endExclusive: Long): Boolean =
+        offset >= 0 && length >= 0 && offset <= endExclusive && length.toLong() <= endExclusive - offset
+
+    private fun recycleUnlessReturned(bitmap: Bitmap?, returned: Bitmap?) {
+        if (bitmap != null && bitmap !== returned && !bitmap.isRecycled) bitmap.recycle()
+    }
+
+    private fun deleteAfterFailure(file: File, failure: Throwable) {
+        val owner = PreparedAiImage(file)
+        closeAfterFailure(owner, failure)
+    }
+
+    private fun closeAfterFailure(image: PreparedAiImage, failure: Throwable) {
+        try {
+            image.close()
+        } catch (_: IOException) {
+            failure.addSuppressed(IOException("Unable to clean temporary AI image"))
+        }
+    }
+
+    private fun cleanupUndelivered(images: List<PreparedAiImage>, pendingFailure: Throwable?) {
+        var cleanupFailure: IOException? = null
+        images.forEach { image ->
+            try {
+                image.close()
+            } catch (_: IOException) {
+                if (cleanupFailure == null) cleanupFailure = IOException("Unable to clean temporary AI image")
+            }
+        }
+        cleanupFailure?.let { failure ->
+            if (pendingFailure != null) pendingFailure.addSuppressed(failure) else throw failure
+        }
+    }
 
     private companion object {
         const val MAX_LONG_EDGE = 1536
@@ -256,6 +341,7 @@ class CalorieEstimateImagePreparer(
         const val MAX_RESCALE_FACTOR = 0.9
         const val ORIENTATION_TAG = 0x0112
         const val SHORT_TYPE = 3
+        const val BITMAP_STAGE_DECODED = "decoded"
         val EXIF_SIGNATURE = byteArrayOf(
             'E'.code.toByte(),
             'x'.code.toByte(),

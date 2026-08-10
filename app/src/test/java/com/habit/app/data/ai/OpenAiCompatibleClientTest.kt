@@ -5,6 +5,7 @@ import com.habit.app.domain.model.AiTestStatus
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FileNotFoundException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CountDownLatch
@@ -139,6 +140,23 @@ class OpenAiCompatibleClientTest {
                         .completeText(config, "secret", "system", "user")
                 }
             }
+            assertEquals(AiFailureKind.INVALID_RESPONSE, failure.kind)
+            assertEquals(MALFORMED_RESPONSE_MESSAGE, failure.userMessage)
+        }
+    }
+
+    @Test
+    fun nonStringMessageContentIsInvalid() = runTest {
+        listOf("123", "true", "false", "null", "{}", "[]").forEach { contentToken ->
+            val body = """{"choices":[{"message":{"content":$contentToken}}]}"""
+
+            val failure = assertThrows(AiServiceFailure::class.java) {
+                runBlocking {
+                    OpenAiCompatibleClient(RecordingTransport(response(200, body)))
+                        .completeText(config, "secret", "system", "user")
+                }
+            }
+
             assertEquals(AiFailureKind.INVALID_RESPONSE, failure.kind)
             assertEquals(MALFORMED_RESPONSE_MESSAGE, failure.userMessage)
         }
@@ -314,6 +332,64 @@ class OpenAiCompatibleClientTest {
         assertTrue(connection.disconnected.get())
     }
 
+    @Test
+    fun cancellationAfterPublicationButBeforeFirstIoNeverStartsIo() = runBlocking {
+        val published = CountDownLatch(1)
+        val releaseFirstIo = CountDownLatch(1)
+        val connection = FakeHttpURLConnection(
+            URL("https://api.example.com/chat/completions"),
+            200,
+            "ok".encodeToByteArray(),
+        )
+        val transport = UrlConnectionAiHttpTransport(
+            connectionFactory = { connection },
+            dispatcher = Dispatchers.IO,
+            onConnectionPublished = {
+                published.countDown()
+                releaseFirstIo.await(2, TimeUnit.SECONDS)
+            },
+        )
+
+        val call = launch(Dispatchers.Default) { transport.execute(request(connection.url.toString())) }
+        assertTrue(published.await(2, TimeUnit.SECONDS))
+        call.cancel()
+        releaseFirstIo.countDown()
+        call.join()
+
+        assertTrue(call.isCancelled)
+        assertEquals(0, connection.outputStreamCalls.get())
+        assertEquals(0, connection.responseCodeCalls.get())
+        assertTrue(connection.disconnected.get())
+    }
+
+    @Test
+    fun streamedOversizeResponsesAreBoundedAndClosedWhenLengthIsUnknownOrFalseSmall() = runTest {
+        listOf(
+            200 to -1L,
+            500 to 1L,
+        ).forEach { (statusCode, reportedLength) ->
+            val stream = CloseTrackingInputStream(ByteArray(MAX_AI_HTTP_RESPONSE_BYTES + 1))
+            val transport = UrlConnectionAiHttpTransport(
+                connectionFactory = { url ->
+                    FakeHttpURLConnection(
+                        url = url,
+                        statusCode = statusCode,
+                        reportedContentLength = reportedLength,
+                        suppliedResponseStream = stream,
+                    )
+                },
+                dispatcher = Dispatchers.IO,
+            )
+
+            val failure = assertThrows(AiServiceFailure::class.java) {
+                runBlocking { transport.execute(request("https://api.example.com/chat/completions")) }
+            }
+
+            assertEquals(AiFailureKind.INVALID_RESPONSE, failure.kind)
+            assertTrue(stream.closed.get())
+        }
+    }
+
     private fun request(url: String) = AiHttpRequest(
         url = url,
         headers = mapOf("Authorization" to "Bearer secret", "Content-Type" to "application/json"),
@@ -335,9 +411,12 @@ class OpenAiCompatibleClientTest {
         private val responseBody: ByteArray = byteArrayOf(),
         private val responseHeaders: Map<String, String> = emptyMap(),
         private val hasErrorStream: Boolean = true,
+        private val reportedContentLength: Long = responseBody.size.toLong(),
+        private val suppliedResponseStream: InputStream? = null,
     ) : HttpURLConnection(url) {
         val disconnected = AtomicBoolean(false)
         val responseCodeCalls = AtomicInteger(0)
+        val outputStreamCalls = AtomicInteger(0)
         val writtenBody = ByteArrayOutputStream()
 
         override fun connect() = Unit
@@ -346,7 +425,10 @@ class OpenAiCompatibleClientTest {
             disconnected.set(true)
         }
 
-        override fun getOutputStream() = writtenBody
+        override fun getOutputStream(): ByteArrayOutputStream {
+            outputStreamCalls.incrementAndGet()
+            return writtenBody
+        }
         override fun getResponseCode(): Int {
             responseCodeCalls.incrementAndGet()
             return statusCode
@@ -354,11 +436,15 @@ class OpenAiCompatibleClientTest {
         override fun getInputStream() = if (statusCode >= 400 && !hasErrorStream) {
             throw FileNotFoundException("HTTP error has no body")
         } else {
-            ByteArrayInputStream(responseBody)
+            suppliedResponseStream ?: ByteArrayInputStream(responseBody)
         }
-        override fun getErrorStream() = if (hasErrorStream) ByteArrayInputStream(responseBody) else null
+        override fun getErrorStream() = if (hasErrorStream) {
+            suppliedResponseStream ?: ByteArrayInputStream(responseBody)
+        } else {
+            null
+        }
         override fun getHeaderField(name: String?): String? = responseHeaders[name]
-        override fun getContentLengthLong(): Long = responseBody.size.toLong()
+        override fun getContentLengthLong(): Long = reportedContentLength
     }
 
     private class BlockingHttpURLConnection(url: URL) : FakeHttpURLConnection(url, 200) {
@@ -374,6 +460,15 @@ class OpenAiCompatibleClientTest {
         override fun disconnect() {
             super.disconnect()
             disconnectCalled.countDown()
+        }
+    }
+
+    private class CloseTrackingInputStream(bytes: ByteArray) : ByteArrayInputStream(bytes) {
+        val closed = AtomicBoolean(false)
+
+        override fun close() {
+            closed.set(true)
+            super.close()
         }
     }
 
