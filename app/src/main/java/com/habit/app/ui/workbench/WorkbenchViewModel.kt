@@ -7,6 +7,8 @@ import com.habit.app.domain.model.DaySnapshot
 import com.habit.app.domain.model.Habit
 import com.habit.app.domain.model.HabitHistorySnapshot
 import com.habit.app.domain.model.MonthSnapshot
+import com.habit.app.domain.model.AiWeeklyReport
+import com.habit.app.domain.ai.previousCompleteWeek
 import com.habit.app.domain.repository.CalendarRepository
 import com.habit.app.domain.repository.CategoryRepository
 import com.habit.app.domain.repository.CheckInRepository
@@ -18,6 +20,8 @@ import com.habit.app.domain.stats.summarizeDiet
 import com.habit.app.domain.stats.MonthStats
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.DeviceDateSnapshot
+import com.habit.app.domain.time.HabitTimePolicy
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
@@ -45,6 +49,37 @@ data class RecentDay(
     val iconKeys: List<String>,
 )
 
+enum class WeeklyInsightStatus { NEEDS_MODEL, READY_TO_GENERATE, SAVED }
+
+data class WeeklyInsightSummary(
+    val status: WeeklyInsightStatus,
+    val startDate: LocalDate,
+    val endDate: LocalDate,
+    val savedReport: AiWeeklyReport? = null,
+)
+
+internal fun buildWeeklyInsightSummary(
+    now: Instant,
+    hasUsableWeeklyModel: Boolean,
+    reports: List<AiWeeklyReport>,
+): WeeklyInsightSummary {
+    val today = now.atZone(HabitTimePolicy.zoneId).toLocalDate()
+    val week = previousCompleteWeek(today)
+    val saved = reports.firstOrNull {
+        it.startEpochDay == week.start.toEpochDay() && it.endEpochDay == week.endInclusive.toEpochDay()
+    }
+    return WeeklyInsightSummary(
+        status = when {
+            saved != null -> WeeklyInsightStatus.SAVED
+            hasUsableWeeklyModel -> WeeklyInsightStatus.READY_TO_GENERATE
+            else -> WeeklyInsightStatus.NEEDS_MODEL
+        },
+        startDate = week.start,
+        endDate = week.endInclusive,
+        savedReport = saved,
+    )
+}
+
 data class WorkbenchUiState(
     val today: LocalDate,
     val habits: List<WorkbenchHabitItem> = emptyList(),
@@ -57,6 +92,7 @@ data class WorkbenchUiState(
     val dietCalories: Int? = null,
     val beverageCups: Int = 0,
     val quickDietTemplates: List<DietTemplate> = emptyList(),
+    val weeklyInsight: WeeklyInsightSummary? = null,
 ) {
     val completedCount: Int get() = habits.count(WorkbenchHabitItem::checked)
     val totalCount: Int get() = habits.size
@@ -97,6 +133,7 @@ class WorkbenchViewModel(
     private val dateProvider: DeviceDateProvider,
     private val dietRepository: DietRepository,
     private val dietTemplateRepository: DietTemplateRepository? = null,
+    private val weeklyInsightSummary: Flow<WeeklyInsightSummary>,
 ) : ViewModel() {
     private val deviceDate = MutableStateFlow(dateProvider.snapshot())
     private val togglingHabitIds = MutableStateFlow<Set<Long>>(emptySet())
@@ -175,8 +212,11 @@ class WorkbenchViewModel(
             )
         }
         val templates = dietTemplateRepository?.observeAll() ?: flowOf(emptyList())
-        return combine(dietContent, templates) { current, available ->
-            current.copy(quickDietTemplates = available.sortedBy { it.sortOrder }.take(4))
+        return combine(dietContent, templates, weeklyInsightSummary) { current, available, insight ->
+            current.copy(
+                quickDietTemplates = available.sortedBy { it.sortOrder }.take(4),
+                weeklyInsight = insight,
+            )
         }
     }
 

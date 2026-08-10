@@ -2,14 +2,12 @@ package com.habit.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,7 +46,9 @@ import com.habit.app.ui.workbench.WorkbenchViewModel
 import com.habit.app.ui.ai.AiModelEditorScreen
 import com.habit.app.ui.ai.AiSettingsScreen
 import com.habit.app.ui.ai.AiSettingsViewModel
-import com.habit.app.ui.components.HabitTopAppBar
+import com.habit.app.ui.ai.AiWeeklyReportScreen
+import com.habit.app.ui.ai.AiReportHistoryScreen
+import com.habit.app.ui.ai.AiWeeklyReportDetailScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,6 +86,13 @@ fun HabitNavHost(
                 onOpenDiet = { navController.navigate(HabitDestination.DietDiary.route) },
                 onAddDiet = { navController.navigate(HabitDestination.DietEditor.route()) },
                 onUseDietTemplate = { navController.navigate(HabitDestination.DietEditor.templateRoute(it)) },
+                onOpenWeeklyReport = { startEpochDay ->
+                    navController.navigate(
+                        startEpochDay?.let(HabitDestination.AiReportDetail::route)
+                            ?: HabitDestination.AiReports.route,
+                    )
+                },
+                onOpenAiSettings = { navController.navigate(HabitDestination.AiSettings.route) },
             )
         }
         composable(HabitDestination.Calendar.route) {
@@ -268,9 +275,35 @@ fun HabitNavHost(
             DietSettingsScreen(viewModel(factory = DietSettingsFactory(container)), onOpenDrawer)
         }
         composable(HabitDestination.AiReports.route) {
-            Scaffold(topBar = { HabitTopAppBar("综合周报", NavigationMode.MENU, onOpenDrawer) }) { padding ->
-                Text("AI 综合周报将在数据准备完成后显示。", Modifier.padding(padding).padding(24.dp))
-            }
+            AiWeeklyReportScreen(
+                viewModel = viewModel(factory = AiWeeklyReportFactory(container)),
+                navigationMode = NavigationMode.MENU,
+                onNavigation = onOpenDrawer,
+                onOpenHistory = { navController.navigate(HabitDestination.AiReportHistory.route) },
+                onOpenSavedReport = {
+                    navController.navigate(HabitDestination.AiReportDetail.route(it)) { launchSingleTop = true }
+                },
+                onOpenModelSettings = { navController.navigate(HabitDestination.AiSettings.route) },
+            )
+        }
+        composable(HabitDestination.AiReportHistory.route) {
+            val reports by container.aiWeeklyReportRepository.observeAll().collectAsStateWithLifecycle(emptyList())
+            AiReportHistoryScreen(
+                reports = reports,
+                onBack = { navController.popBackStack() },
+                onOpenReport = { navController.navigate(HabitDestination.AiReportDetail.route(it)) },
+            )
+        }
+        composable(
+            route = HabitDestination.AiReportDetail.route,
+            arguments = listOf(navArgument("startEpochDay") { type = NavType.LongType }),
+        ) { entry ->
+            val startEpochDay = requireNotNull(entry.arguments?.getLong("startEpochDay"))
+            val report by container.aiWeeklyReportRepository.observeWeek(startEpochDay)
+                .collectAsStateWithLifecycle(initialValue = null)
+            report?.let {
+                AiWeeklyReportDetailScreen(it) { navController.popBackStack() }
+            } ?: Text("周报不存在")
         }
         composable(HabitDestination.AiSettings.route) {
             AiSettingsScreen(
@@ -460,4 +493,10 @@ private class AiSettingsFactory(private val container: AppContainer) : ViewModel
             client = container.aiCompletionClient,
             coordinator = container.aiModelOperationCoordinator,
         ) as T
+}
+
+private class AiWeeklyReportFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        container.createAiWeeklyReportViewModel() as T
 }

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,12 @@ import com.habit.app.ui.theme.ThemeRepository
 import com.habit.app.ui.welcome.WelcomeScreen
 import com.habit.app.ui.workbench.RecentDay
 import com.habit.app.ui.workbench.RecentWeekTimeline
+import com.habit.app.ui.workbench.WeeklyInsightStatus
+import com.habit.app.ui.workbench.WeeklyInsightSummary
+import com.habit.app.ui.workbench.WeeklyInsightCard
+import com.habit.app.domain.model.AiWeeklyReport
+import com.habit.app.domain.model.WeeklyReportCoverage
+import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertTrue
 import kotlinx.coroutines.flow.Flow
@@ -83,6 +90,44 @@ class AdaptivePrimaryActionsTest {
         assertTrue(bounds.maxOf { it.center.y } - bounds.minOf { it.center.y } <= 1f)
     }
 
+    @Test
+    fun weeklyInsightPrimaryActionRemainsReachableAtLargeFontScale() {
+        setShortScreenContent {
+            WeeklyInsightCard(
+                summary = WeeklyInsightSummary(
+                    status = WeeklyInsightStatus.READY_TO_GENERATE,
+                    startDate = LocalDate.of(2026, 8, 3),
+                    endDate = LocalDate.of(2026, 8, 9),
+                ),
+                onOpenReport = {},
+                onOpenModelSettings = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("weekly_insight_action")
+            .assertHeightIsAtLeast(48.dp)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun savedWeeklyInsightShowsBeijingGenerationTime() {
+        val report = adaptiveWeeklyReport()
+        setShortScreenContent {
+            WeeklyInsightCard(
+                summary = WeeklyInsightSummary(
+                    status = WeeklyInsightStatus.SAVED,
+                    startDate = LocalDate.of(2026, 8, 3),
+                    endDate = LocalDate.of(2026, 8, 9),
+                    savedReport = report,
+                ),
+                onOpenReport = {},
+                onOpenModelSettings = {},
+            )
+        }
+
+        composeRule.onNodeWithText("生成于 8月10日 12:05").assertIsDisplayed()
+    }
+
     private fun setShortScreenContent(content: @androidx.compose.runtime.Composable () -> Unit) {
         composeRule.setContent {
             val density = LocalDensity.current
@@ -102,6 +147,25 @@ class AdaptivePrimaryActionsTest {
         }
     }
 }
+
+private fun adaptiveWeeklyReport() = AiWeeklyReport(
+    id = 1,
+    startEpochDay = LocalDate.of(2026, 8, 3).toEpochDay(),
+    endEpochDay = LocalDate.of(2026, 8, 9).toEpochDay(),
+    generatedAt = Instant.parse("2026-08-10T04:05:00Z").toEpochMilli(),
+    modelNameSnapshot = "测试模型",
+    modelIdSnapshot = "test-model",
+    title = "上周回顾",
+    overview = "概览",
+    habitAnalysis = "习惯",
+    dietAnalysis = "饮食",
+    correlationFinding = "关联",
+    suggestions = listOf("一", "二", "三"),
+    cautions = listOf("提示"),
+    coverage = WeeklyReportCoverage(7, 4, 2, 2, 1, 1),
+    createdAt = 1,
+    updatedAt = 1,
+)
 
 private class StaticThemeRepository : ThemeRepository {
     override val theme: Flow<HabitThemeId> = flowOf(HabitThemeId.SKY_BLUE)

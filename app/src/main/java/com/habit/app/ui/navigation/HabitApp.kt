@@ -135,6 +135,7 @@ private class WorkbenchViewModelFactory(
             dateProvider = container.dateProvider,
             dietRepository = container.dietRepository,
             dietTemplateRepository = container.dietTemplateRepository,
+            weeklyInsightSummary = container.weeklyInsightSummary,
         ) as T
 }
 

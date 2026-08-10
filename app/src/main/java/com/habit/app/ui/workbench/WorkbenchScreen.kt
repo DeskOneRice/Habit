@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,10 +40,15 @@ import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
 import com.habit.app.ui.components.habitEmoji
+import com.habit.app.domain.time.HabitTimePolicy
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 private val workbenchDateFormatter = DateTimeFormatter.ofPattern("M月d日 EEEE")
+private val weeklyInsightStartFormatter = DateTimeFormatter.ofPattern("M月d日")
+private val weeklyInsightEndFormatter = DateTimeFormatter.ofPattern("M月d日")
+private val weeklyInsightGeneratedFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
 
 @Composable
 fun WorkbenchScreen(
@@ -54,6 +60,8 @@ fun WorkbenchScreen(
     onOpenDiet: () -> Unit,
     onAddDiet: () -> Unit,
     onUseDietTemplate: (Long) -> Unit,
+    onOpenWeeklyReport: (Long?) -> Unit,
+    onOpenAiSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     DeviceDateRefreshEffect(viewModel::refreshDeviceDate)
@@ -94,6 +102,9 @@ fun WorkbenchScreen(
                     }
                 }
                 item { RecentWeekCard(state.recentDays, state.today, onOpenCalendar) }
+                state.weeklyInsight?.let { summary ->
+                    item { WeeklyInsightCard(summary, onOpenWeeklyReport, onOpenAiSettings) }
+                }
                 item { DietTodayCard(state, onOpenDiet, onAddDiet) }
                 if (state.quickDietTemplates.isNotEmpty()) {
                     item {
@@ -126,6 +137,58 @@ fun WorkbenchScreen(
                 }
                 state.message?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             }
+        }
+    }
+}
+
+@Composable
+internal fun WeeklyInsightCard(
+    summary: WeeklyInsightSummary,
+    onOpenReport: (Long?) -> Unit,
+    onOpenModelSettings: () -> Unit,
+) {
+    HabitCard(Modifier.fillMaxWidth().testTag("weekly_insight_card")) {
+        Text("综合周报", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            when (summary.status) {
+                WeeklyInsightStatus.NEEDS_MODEL -> "先配置周报模型"
+                WeeklyInsightStatus.READY_TO_GENERATE -> "上周数据已准备好"
+                WeeklyInsightStatus.SAVED -> summary.savedReport?.title ?: "上周周报已保存"
+            },
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "${summary.startDate.format(weeklyInsightStartFormatter)} – ${summary.endDate.format(weeklyInsightEndFormatter)}",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        summary.savedReport?.let { report ->
+            Text(
+                "生成于 ${Instant.ofEpochMilli(report.generatedAt).atZone(HabitTimePolicy.zoneId).format(weeklyInsightGeneratedFormatter)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        summary.savedReport?.overview?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = {
+                if (summary.status == WeeklyInsightStatus.NEEDS_MODEL) onOpenModelSettings()
+                else onOpenReport(summary.savedReport?.startEpochDay)
+            },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("weekly_insight_action"),
+        ) {
+            Text(
+                when (summary.status) {
+                    WeeklyInsightStatus.NEEDS_MODEL -> "配置模型"
+                    WeeklyInsightStatus.READY_TO_GENERATE -> "生成上周周报"
+                    WeeklyInsightStatus.SAVED -> "查看周报"
+                },
+            )
         }
     }
 }

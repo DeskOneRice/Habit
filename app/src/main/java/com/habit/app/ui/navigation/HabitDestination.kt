@@ -33,6 +33,11 @@ sealed interface HabitDestination {
     data object DietStats : HabitDestination { override val route = "diet_stats" }
     data object DietSettings : HabitDestination { override val route = "diet_settings" }
     data object AiReports : HabitDestination { override val route = "ai_reports" }
+    data object AiReportHistory : HabitDestination { override val route = "ai_reports/history" }
+    data object AiReportDetail : HabitDestination {
+        override val route = "ai_reports/detail/{startEpochDay}"
+        fun route(startEpochDay: Long) = "ai_reports/detail/$startEpochDay"
+    }
     data object AiSettings : HabitDestination { override val route = "ai_settings" }
     data object AiModelEditor : HabitDestination {
         override val route = "ai_model_editor?modelId={modelId}"

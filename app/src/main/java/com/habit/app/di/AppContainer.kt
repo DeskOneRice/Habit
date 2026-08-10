@@ -45,12 +45,19 @@ import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.AiModelRepository
 import com.habit.app.domain.repository.AiWeeklyReportRepository
+import com.habit.app.domain.model.AiFeature
+import com.habit.app.domain.model.AiModelConfig
+import com.habit.app.domain.model.AiTestStatus
 import com.habit.app.domain.ai.WeeklyReportInputBuilder
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.SystemDeviceDateProvider
 import com.habit.app.ui.ai.AiModelOperationCoordinator
 import com.habit.app.ui.ai.AiWeeklyReportViewModel
+import com.habit.app.ui.workbench.WeeklyInsightSummary
+import com.habit.app.ui.workbench.buildWeeklyInsightSummary
 import java.time.Clock
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 
 private const val THEME_PREFERENCES_FILE = "habit_theme_preferences"
 
@@ -96,6 +103,18 @@ class AppContainer(
         categoryRepository = categoryRepository,
         dietRepository = dietRepository,
     )
+    val weeklyInsightSummary: Flow<WeeklyInsightSummary> = combine(
+        aiModelRepository.observeModels(),
+        aiModelRepository.observeBindings(),
+        aiWeeklyReportRepository.observeAll(),
+    ) { models, bindings, reports ->
+        val boundId = bindings.firstOrNull { it.feature == AiFeature.WEEKLY_REPORT }?.modelConfigId
+        buildWeeklyInsightSummary(
+            now = clock.instant(),
+            hasUsableWeeklyModel = models.firstOrNull { it.id == boundId }?.isUsableWeeklyModel() == true,
+            reports = reports,
+        )
+    }
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)
@@ -125,3 +144,20 @@ class AppContainer(
         appVersion = BuildConfig.VERSION_NAME,
     )
 }
+
+private fun AiModelConfig.isUsableWeeklyModel(): Boolean {
+    if (!enabled || !supportsText) return false
+    val textStatus = if (lastTestMessage.startsWith(TEST_STATE_PREFIX)) {
+        lastTestMessage.removePrefix(TEST_STATE_PREFIX)
+            .split('|')
+            .firstOrNull { it.startsWith("text=") }
+            ?.substringAfter('=')
+            ?.let { runCatching { AiTestStatus.valueOf(it) }.getOrNull() }
+            ?: AiTestStatus.UNTESTED
+    } else {
+        lastTestStatus
+    }
+    return textStatus == AiTestStatus.PASSED
+}
+
+private const val TEST_STATE_PREFIX = "habit-test-v1|"
