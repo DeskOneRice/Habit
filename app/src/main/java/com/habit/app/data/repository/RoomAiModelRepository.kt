@@ -5,6 +5,7 @@ import com.habit.app.data.local.AiFeatureBindingEntity
 import com.habit.app.data.local.AiModelConfigEntity
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.toDomain
+import com.habit.app.data.local.toDomainOrNull
 import com.habit.app.domain.model.AiFeature
 import com.habit.app.domain.model.AiModelConfig
 import com.habit.app.domain.model.AiModelConfigDraft
@@ -26,7 +27,7 @@ class RoomAiModelRepository(
     }
 
     override fun observeBindings() = dao.observeBindings().map { rows ->
-        rows.map(AiFeatureBindingEntity::toDomain)
+        rows.mapNotNull(AiFeatureBindingEntity::toDomainOrNull)
     }
 
     override fun observeModel(id: Long): Flow<AiModelConfig?> = dao.observeModel(id).map { it?.toDomain() }

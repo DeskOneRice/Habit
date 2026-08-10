@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.data.local.AiCalorieEstimateEntity
+import com.habit.app.data.local.AiWeeklyReportEntity
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.domain.model.AiFeature
 import com.habit.app.domain.model.AiModelConfigDraft
@@ -31,6 +32,7 @@ class RoomAiRepositoryTest {
     private lateinit var models: RoomAiModelRepository
     private lateinit var reports: RoomAiWeeklyReportRepository
     private lateinit var diets: RoomDietRepository
+    private lateinit var clock: MutableClock
 
     @Before
     fun open() {
@@ -38,7 +40,7 @@ class RoomAiRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             HabitDatabase::class.java,
         ).allowMainThreadQueries().build()
-        val clock = Clock.fixed(Instant.ofEpochMilli(1_000), ZoneOffset.UTC)
+        clock = MutableClock(1_000)
         models = RoomAiModelRepository(database, clock)
         reports = RoomAiWeeklyReportRepository(database, clock)
         diets = RoomDietRepository(database, clock)
@@ -63,13 +65,58 @@ class RoomAiRepositoryTest {
     fun savingSameWeekReplacesExistingReport() = runTest {
         reports.save(report(startEpochDay = 10, title = "First"))
 
+        clock.currentMillis = 2_000
+
         reports.save(report(startEpochDay = 10, title = "Replacement"))
 
         val saved = reports.observeAll().first()
         assertEquals(1, saved.size)
         assertEquals("Replacement", saved.single().title)
         assertEquals(1_000, saved.single().createdAt)
-        assertEquals(1_000, saved.single().updatedAt)
+        assertEquals(2_000, saved.single().updatedAt)
+    }
+
+    @Test
+    fun malformedPersistedValuesAreIsolatedFromRepositoryFlows() = runTest {
+        val modelId = models.saveModel(null, modelDraft("Primary"))
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO ai_model_configs (id,externalId,name,baseUrl,modelId,supportsText,supportsVision,allowInsecureHttp,enabled,lastTestedAt,lastTestStatus,lastTestMessage,createdAt,updatedAt) VALUES (2,'other','Future','https://example.test','future',1,0,0,1,NULL,'UNKNOWN_STATUS','',1,1)",
+        )
+        models.bind(AiFeature.WEEKLY_REPORT, modelId)
+        database.openHelper.writableDatabase.execSQL(
+            "INSERT INTO ai_feature_bindings (feature,modelConfigId,updatedAt) VALUES ('UNKNOWN_FEATURE',NULL,1)",
+        )
+        database.aiDao().insertReport(
+            AiWeeklyReportEntity(
+                startEpochDay = 20,
+                endEpochDay = 26,
+                generatedAt = 1,
+                modelNameSnapshot = "Primary",
+                modelIdSnapshot = "model",
+                title = "Still readable",
+                overview = "overview",
+                habitAnalysis = "habits",
+                dietAnalysis = "diet",
+                correlationFinding = "correlation",
+                suggestionsJson = "{}",
+                cautionsJson = "[1]",
+                coverageJson = "[]",
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        )
+
+        val observedModels = models.observeModels().first()
+        val observedBindings = models.observeBindings().first()
+        val observedReport = reports.observeAll().first().single()
+
+        assertEquals(2, observedModels.size)
+        assertEquals("UNTESTED", observedModels.single { it.id == 2L }.lastTestStatus.name)
+        assertEquals(listOf(AiFeature.WEEKLY_REPORT), observedBindings.map { it.feature })
+        assertEquals("Still readable", observedReport.title)
+        assertEquals(emptyList<String>(), observedReport.suggestions)
+        assertEquals(emptyList<String>(), observedReport.cautions)
+        assertEquals(WeeklyReportCoverage(0, 0, 0, 0, 0, 0), observedReport.coverage)
     }
 
     @Test
@@ -135,4 +182,12 @@ class RoomAiRepositoryTest {
         beverage = null,
         note = "",
     )
+
+    private class MutableClock(
+        var currentMillis: Long,
+    ) : Clock() {
+        override fun getZone() = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId): Clock = this
+        override fun instant(): Instant = Instant.ofEpochMilli(currentMillis)
+    }
 }

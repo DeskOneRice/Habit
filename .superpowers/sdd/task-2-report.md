@@ -36,3 +36,18 @@ The new migration instrumentation test creates a v4 category, habit, check-in, m
 
 - Confirmed exact entity columns, unique indexes, FK actions, migration registration, model-binding preservation, weekly replacement, and meal-estimate cascade through schema and instrumentation coverage.
 - No API keys are stored in Room. Backup import/export and application UI/service consumers remain intentionally out of this task’s scope.
+
+## Review Fixes
+
+- AI model statuses now use a closed-set lookup and safely downgrade unknown persisted values to `UNTESTED`.
+- AI feature bindings use a nullable mapper; the repository applies `mapNotNull`, so an unknown persisted feature is skipped without being rebound to a valid feature or terminating the bindings flow.
+- Weekly report suggestion/caution arrays and calorie item arrays now require their expected JSON shape and value types. Malformed payloads return empty lists. Malformed or incomplete coverage payloads return an all-zero `WeeklyReportCoverage`, while the report’s independent structured fields stay readable.
+- The weekly replacement test now uses a mutable clock and proves that replacement preserves the first `createdAt` while advancing `updatedAt`.
+
+### Review TDD and Verification
+
+- RED mapper test: malformed `itemsJson` threw `IllegalArgumentException` before the parser guards.
+- RED repository instrumentation test: `AiTestStatus.valueOf("UNKNOWN_STATUS")` threw and terminated `observeModels`; this was the confirmed Flow root cause.
+- GREEN focused mapper test: `testDebugUnitTest --tests 'com.habit.app.data.local.AiEntityMappersTest'` passed.
+- GREEN repository instrumentation test: `connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.habit.app.data.repository.RoomAiRepositoryTest` passed all 4 tests on `Small_Phone_API_35`.
+- Full verification: `testDebugUnitTest` passed.

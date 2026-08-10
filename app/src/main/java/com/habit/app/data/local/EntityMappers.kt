@@ -210,17 +210,21 @@ fun AiModelConfigEntity.toDomain(): AiModelConfig = AiModelConfig(
     allowInsecureHttp = allowInsecureHttp,
     enabled = enabled,
     lastTestedAt = lastTestedAt,
-    lastTestStatus = AiTestStatus.valueOf(lastTestStatus),
+    lastTestStatus = AiTestStatus.entries.firstOrNull { it.name == lastTestStatus }
+        ?: AiTestStatus.UNTESTED,
     lastTestMessage = lastTestMessage,
     createdAt = createdAt,
     updatedAt = updatedAt,
 )
 
-fun AiFeatureBindingEntity.toDomain(): AiFeatureBinding = AiFeatureBinding(
-    feature = AiFeature.valueOf(feature),
-    modelConfigId = modelConfigId,
-    updatedAt = updatedAt,
-)
+fun AiFeatureBindingEntity.toDomainOrNull(): AiFeatureBinding? {
+    val parsedFeature = AiFeature.entries.firstOrNull { it.name == feature } ?: return null
+    return AiFeatureBinding(
+        feature = parsedFeature,
+        modelConfigId = modelConfigId,
+        updatedAt = updatedAt,
+    )
+}
 
 fun AiWeeklyReportEntity.toDomain(): AiWeeklyReport = AiWeeklyReport(
     id = id,
@@ -294,9 +298,11 @@ private fun List<String>.toJsonArray(): String = aiJson.encodeToString(
     buildJsonArray { this@toJsonArray.forEach { add(JsonPrimitive(it)) } },
 )
 
-private fun String.toStringList(): List<String> = aiJson.parseToJsonElement(this).jsonArray.map {
-    it.jsonPrimitive.content
-}
+private fun String.toStringList(): List<String> = runCatching {
+    aiJson.parseToJsonElement(this).jsonArray.map { value ->
+        value.jsonPrimitive.takeIf { it.isJsonString() }?.content ?: error("Expected JSON string")
+    }
+}.getOrDefault(emptyList())
 
 private fun WeeklyReportCoverage.toJsonObject(): String = aiJson.encodeToString(
     JsonObject.serializer(),
@@ -310,9 +316,9 @@ private fun WeeklyReportCoverage.toJsonObject(): String = aiJson.encodeToString(
     },
 )
 
-private fun String.toCoverage(): WeeklyReportCoverage {
+private fun String.toCoverage(): WeeklyReportCoverage = runCatching {
     val json = aiJson.parseToJsonElement(this).jsonObject
-    return WeeklyReportCoverage(
+    WeeklyReportCoverage(
         scheduledHabitCount = json.requiredInt("scheduledHabitCount"),
         completedHabitCount = json.requiredInt("completedHabitCount"),
         dietRecordCount = json.requiredInt("dietRecordCount"),
@@ -320,20 +326,33 @@ private fun String.toCoverage(): WeeklyReportCoverage {
         knownCalorieRecords = json.requiredInt("knownCalorieRecords"),
         missingCalorieRecords = json.requiredInt("missingCalorieRecords"),
     )
+}.getOrDefault(WeeklyReportCoverage(0, 0, 0, 0, 0, 0))
+
+private fun JsonObject.requiredInt(name: String): Int {
+    val primitive = get(name)?.jsonPrimitive ?: error("Missing $name")
+    require(!primitive.isJsonString()) { "Expected JSON number" }
+    return primitive.int
 }
 
-private fun JsonObject.requiredInt(name: String): Int = getValue(name).jsonPrimitive.int
-
-private fun String.toCalorieItems(): List<AiCalorieItemEstimate> =
+private fun String.toCalorieItems(): List<AiCalorieItemEstimate> = runCatching {
     aiJson.parseToJsonElement(this).jsonArray.map { item ->
         val json = item.jsonObject
         AiCalorieItemEstimate(
-            name = json.getValue("name").jsonPrimitive.content,
-            portion = json.getValue("portion").jsonPrimitive.content,
+            name = json.requiredString("name"),
+            portion = json.requiredString("portion"),
             minKcal = json.requiredInt("minKcal"),
             maxKcal = json.requiredInt("maxKcal"),
         )
     }
+}.getOrDefault(emptyList())
+
+private fun JsonObject.requiredString(name: String): String {
+    val primitive = get(name)?.jsonPrimitive ?: error("Missing $name")
+    require(primitive.isJsonString()) { "Expected JSON string" }
+    return primitive.content
+}
+
+private fun JsonPrimitive.isJsonString(): Boolean = toString().startsWith('"')
 
 private fun List<AiCalorieItemEstimate>.toCalorieItemsJson(): String = aiJson.encodeToString(
     JsonArray.serializer(),
