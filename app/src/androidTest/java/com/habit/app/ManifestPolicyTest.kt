@@ -1,17 +1,43 @@
 package com.habit.app
 
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.content.res.Resources
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.xmlpull.v1.XmlPullParser
 
 @RunWith(AndroidJUnit4::class)
 class ManifestPolicyTest {
+    @Test
+    fun aiNetworkPolicyAllowsOnlyInternetAndExplicitCleartextTransport() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val packageInfo = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_PERMISSIONS,
+        )
+
+        val requestedPermissions = packageInfo.requestedPermissions.orEmpty().toSet()
+        assertTrue(requestedPermissions.contains("android.permission.INTERNET"))
+        assertEquals(
+            setOf("android.permission.INTERNET"),
+            requestedPermissions.filterTo(mutableSetOf()) { permission ->
+                permission.startsWith("android.permission.") &&
+                    NETWORK_OR_ACCOUNT_MARKERS.any(permission::contains)
+            },
+        )
+        assertNotEquals(
+            "Platform cleartext must be available only for profiles explicitly authorized by URL policy.",
+            0,
+            context.applicationInfo.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC,
+        )
+    }
+
     @Test
     fun localOnlyAppDisablesAndroidBackupAndDeviceTransfer() {
         val applicationInfo = InstrumentationRegistry.getInstrumentation()
@@ -143,6 +169,14 @@ class ManifestPolicyTest {
     }
 
     private companion object {
+        val NETWORK_OR_ACCOUNT_MARKERS = listOf(
+            "INTERNET",
+            "NETWORK",
+            "WIFI",
+            "ACCOUNT",
+            "CREDENTIAL",
+            "SYNC",
+        )
         const val AI_SECRET_PREFERENCES_FILE = "habit_ai_secrets.xml"
         val ALL_BACKUP_DOMAINS = setOf(
             "root",
