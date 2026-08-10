@@ -13,7 +13,7 @@ interface AiModelRepository {
     fun observeBindings(): Flow<List<AiFeatureBinding>>
     fun observeModel(id: Long): Flow<AiModelConfig?>
     suspend fun saveModel(id: Long?, draft: AiModelConfigDraft): Long
-    suspend fun recordTest(id: Long, status: AiTestStatus, message: String, testedAt: Long)
+    suspend fun recordTest(id: Long, status: AiTestStatus, message: String, testedAt: Long?)
     suspend fun bind(feature: AiFeature, modelId: Long?)
     suspend fun deleteModel(id: Long)
 }

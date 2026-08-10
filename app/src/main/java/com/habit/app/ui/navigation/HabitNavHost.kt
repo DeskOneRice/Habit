@@ -2,6 +2,11 @@ package com.habit.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +45,10 @@ import com.habit.app.ui.diet.DietStatsViewModel
 import com.habit.app.ui.welcome.WelcomeScreen
 import com.habit.app.ui.workbench.WorkbenchScreen
 import com.habit.app.ui.workbench.WorkbenchViewModel
+import com.habit.app.ui.ai.AiModelEditorScreen
+import com.habit.app.ui.ai.AiSettingsScreen
+import com.habit.app.ui.ai.AiSettingsViewModel
+import com.habit.app.ui.components.HabitTopAppBar
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -258,6 +267,31 @@ fun HabitNavHost(
         composable(HabitDestination.DietSettings.route) {
             DietSettingsScreen(viewModel(factory = DietSettingsFactory(container)), onOpenDrawer)
         }
+        composable(HabitDestination.AiReports.route) {
+            Scaffold(topBar = { HabitTopAppBar("综合周报", NavigationMode.MENU, onOpenDrawer) }) { padding ->
+                Text("AI 综合周报将在数据准备完成后显示。", Modifier.padding(padding).padding(24.dp))
+            }
+        }
+        composable(HabitDestination.AiSettings.route) {
+            AiSettingsScreen(
+                viewModel = viewModel(factory = AiSettingsFactory(container)),
+                onOpenDrawer = onOpenDrawer,
+                onAddModel = { navController.navigate(HabitDestination.AiModelEditor.route()) },
+                onEditModel = { navController.navigate(HabitDestination.AiModelEditor.route(it)) },
+            )
+        }
+        composable(
+            route = HabitDestination.AiModelEditor.route,
+            arguments = listOf(navArgument("modelId") { type = NavType.LongType; defaultValue = -1L }),
+        ) { entry ->
+            val modelId = entry.arguments?.getLong("modelId")?.takeIf { it >= 0 }
+            AiModelEditorScreen(
+                viewModel = viewModel(factory = AiSettingsFactory(container)),
+                modelId = modelId,
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
+            )
+        }
     }
 }
 
@@ -415,4 +449,14 @@ private class DietSettingsFactory(private val container: AppContainer) : ViewMod
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         DietSettingsViewModel(container.dietPreferencesRepository) as T
+}
+
+private class AiSettingsFactory(private val container: AppContainer) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T =
+        AiSettingsViewModel(
+            repository = container.aiModelRepository,
+            secretStore = container.aiSecretStore,
+            client = container.aiCompletionClient,
+        ) as T
 }

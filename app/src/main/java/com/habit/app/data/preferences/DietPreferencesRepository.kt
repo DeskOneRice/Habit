@@ -7,13 +7,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 
-enum class DrawerModuleGroup { HABIT, DIET }
+enum class DrawerModuleGroup { HABIT, DIET, AI }
 
 data class DietPreferences(
     val dailyGoalEnabled: Boolean = false,
     val dailyGoalKcal: Int? = null,
     val habitGroupExpanded: Boolean = true,
     val dietGroupExpanded: Boolean = true,
+    val aiGroupExpanded: Boolean = true,
 )
 
 fun validateDietGoal(enabled: Boolean, kcal: Int?): Int? {
@@ -33,6 +34,7 @@ class DietPreferencesRepository(
             dailyGoalKcal = values[dailyCalorieGoalKcalKey],
             habitGroupExpanded = values[habitGroupExpandedKey] ?: true,
             dietGroupExpanded = values[dietGroupExpandedKey] ?: true,
+            aiGroupExpanded = values[aiGroupExpandedKey] ?: true,
         )
     }
 
@@ -51,6 +53,7 @@ class DietPreferencesRepository(
             values[when (group) {
                 DrawerModuleGroup.HABIT -> habitGroupExpandedKey
                 DrawerModuleGroup.DIET -> dietGroupExpandedKey
+                DrawerModuleGroup.AI -> aiGroupExpandedKey
             }] = expanded
         }
     }

@@ -8,6 +8,9 @@ import androidx.room.Room
 import com.habit.app.BuildConfig
 import com.habit.app.data.ai.AiSecretStore
 import com.habit.app.data.ai.AndroidKeystoreAiSecretStore
+import com.habit.app.data.ai.AiCompletionClient
+import com.habit.app.data.ai.OpenAiCompatibleClient
+import com.habit.app.data.ai.UrlConnectionAiHttpTransport
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.PresetCategoryCallback
 import com.habit.app.data.local.MIGRATION_1_2
@@ -83,6 +86,7 @@ class AppContainer(
     val aiModelRepository: AiModelRepository = RoomAiModelRepository(database, clock)
     val aiWeeklyReportRepository: AiWeeklyReportRepository = RoomAiWeeklyReportRepository(database, clock)
     val aiSecretStore: AiSecretStore = AndroidKeystoreAiSecretStore(applicationContext)
+    val aiCompletionClient: AiCompletionClient = OpenAiCompatibleClient(UrlConnectionAiHttpTransport())
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)

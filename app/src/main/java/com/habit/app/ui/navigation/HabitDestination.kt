@@ -32,6 +32,12 @@ sealed interface HabitDestination {
     data object DietTemplates : HabitDestination { override val route = "diet_templates" }
     data object DietStats : HabitDestination { override val route = "diet_stats" }
     data object DietSettings : HabitDestination { override val route = "diet_settings" }
+    data object AiReports : HabitDestination { override val route = "ai_reports" }
+    data object AiSettings : HabitDestination { override val route = "ai_settings" }
+    data object AiModelEditor : HabitDestination {
+        override val route = "ai_model_editor?modelId={modelId}"
+        fun route(id: Long? = null) = if (id == null) "ai_model_editor" else "ai_model_editor?modelId=$id"
+    }
 }
 
 data class DrawerDestination(
@@ -53,9 +59,14 @@ val dietDestinations = listOf(
     DrawerDestination(HabitDestination.DietSettings, "饮食设置", "⚙️"),
 )
 
+val aiDestinations = listOf(
+    DrawerDestination(HabitDestination.AiReports, "综合周报", "📝"),
+    DrawerDestination(HabitDestination.AiSettings, "模型配置", "🤖"),
+)
+
 val topLevelDestinations = listOf(
     DrawerDestination(HabitDestination.Workbench, "今日工作台", "🏠"),
-) + habitDestinations + dietDestinations + DrawerDestination(HabitDestination.Settings, "主题与设置", "🎨")
+) + habitDestinations + dietDestinations + aiDestinations + DrawerDestination(HabitDestination.Settings, "主题与设置", "🎨")
 
 val drawerTopLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()
 

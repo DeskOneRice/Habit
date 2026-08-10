@@ -32,8 +32,10 @@ fun HabitDrawerContent(
     progress: Float,
     habitExpanded: Boolean,
     dietExpanded: Boolean,
+    aiExpanded: Boolean,
     onToggleHabit: () -> Unit,
     onToggleDiet: () -> Unit,
+    onToggleAi: () -> Unit,
     onDestination: (HabitDestination) -> Unit,
 ) {
     Column(
@@ -72,6 +74,10 @@ fun HabitDrawerContent(
         }
         DrawerGroupHeader("饮食", "🍽️", dietExpanded, onToggleDiet)
         if (dietExpanded) dietDestinations.forEach { item ->
+            DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
+        }
+        DrawerGroupHeader("AI 洞察", "✨", aiExpanded, onToggleAi)
+        if (aiExpanded) aiDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }
         Spacer(Modifier.height(4.dp))

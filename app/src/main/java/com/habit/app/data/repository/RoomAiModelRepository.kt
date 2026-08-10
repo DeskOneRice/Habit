@@ -57,7 +57,7 @@ class RoomAiModelRepository(
         }
     }
 
-    override suspend fun recordTest(id: Long, status: AiTestStatus, message: String, testedAt: Long) {
+    override suspend fun recordTest(id: Long, status: AiTestStatus, message: String, testedAt: Long?) {
         database.withTransaction {
             val existing = requireNotNull(dao.getModel(id)) { "AI model does not exist" }
             dao.updateModel(

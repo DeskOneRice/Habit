@@ -84,21 +84,19 @@ private fun AppNavigation(startDestination: HabitDestination, container: AppCont
                         progress = workbenchState.progress,
                         habitExpanded = dietPreferences.habitGroupExpanded,
                         dietExpanded = dietPreferences.dietGroupExpanded,
+                        aiExpanded = dietPreferences.aiGroupExpanded,
                         onToggleHabit = {
                             scope.launch { container.dietPreferencesRepository.setGroupExpanded(DrawerModuleGroup.HABIT, !dietPreferences.habitGroupExpanded) }
                         },
                         onToggleDiet = {
                             scope.launch { container.dietPreferencesRepository.setGroupExpanded(DrawerModuleGroup.DIET, !dietPreferences.dietGroupExpanded) }
                         },
+                        onToggleAi = {
+                            scope.launch { container.dietPreferencesRepository.setGroupExpanded(DrawerModuleGroup.AI, !dietPreferences.aiGroupExpanded) }
+                        },
                         onDestination = { destination ->
                             scope.launch { drawerState.close() }
-                            navController.navigate(destination.route) {
-                                popUpTo(HabitDestination.Workbench.route) {
-                                    saveState = drawerNavigationPolicy.saveState
-                                }
-                                launchSingleTop = true
-                                restoreState = drawerNavigationPolicy.restoreState
-                            }
+                            navController.navigateFromDrawer(destination)
                         },
                     )
                 }
@@ -112,6 +110,16 @@ private fun AppNavigation(startDestination: HabitDestination, container: AppCont
                 onOpenDrawer = { scope.launch { drawerState.open() } },
             )
         }
+    }
+}
+
+fun androidx.navigation.NavHostController.navigateFromDrawer(destination: HabitDestination) {
+    navigate(destination.route) {
+        popUpTo(HabitDestination.Workbench.route) {
+            saveState = drawerNavigationPolicy.saveState
+        }
+        launchSingleTop = true
+        restoreState = drawerNavigationPolicy.restoreState
     }
 }
 
