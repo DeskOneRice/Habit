@@ -45,9 +45,11 @@ import com.habit.app.domain.repository.DietTemplateRepository
 import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.AiModelRepository
 import com.habit.app.domain.repository.AiWeeklyReportRepository
+import com.habit.app.domain.ai.WeeklyReportInputBuilder
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.SystemDeviceDateProvider
 import com.habit.app.ui.ai.AiModelOperationCoordinator
+import com.habit.app.ui.ai.AiWeeklyReportViewModel
 import java.time.Clock
 
 private const val THEME_PREFERENCES_FILE = "habit_theme_preferences"
@@ -89,11 +91,27 @@ class AppContainer(
     val aiSecretStore: AiSecretStore = AndroidKeystoreAiSecretStore(applicationContext)
     val aiCompletionClient: AiCompletionClient = OpenAiCompatibleClient(UrlConnectionAiHttpTransport())
     internal val aiModelOperationCoordinator = AiModelOperationCoordinator()
+    val weeklyReportInputBuilder = WeeklyReportInputBuilder(
+        calendarRepository = calendarRepository,
+        categoryRepository = categoryRepository,
+        dietRepository = dietRepository,
+    )
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)
     val dietPreferencesRepository = DietPreferencesRepository(applicationContext.themeDataStore, clock)
     val onboardingPreferencesRepository = OnboardingPreferencesRepository(applicationContext.themeDataStore)
+
+    fun createAiWeeklyReportViewModel(): AiWeeklyReportViewModel = AiWeeklyReportViewModel(
+        inputLoader = weeklyReportInputBuilder,
+        modelRepository = aiModelRepository,
+        reportRepository = aiWeeklyReportRepository,
+        secretStore = aiSecretStore,
+        client = aiCompletionClient,
+        dateProvider = dateProvider,
+        clock = clock,
+        coordinator = aiModelOperationCoordinator,
+    )
     private val backupDocumentStore = AndroidBackupDocumentStore(applicationContext)
     private val roomBackupRepository = RoomBackupRepository(database)
     val backupOperations = HabitBackupService(

@@ -12,6 +12,7 @@ internal class AiModelOperationCoordinator {
     private val monitor = Any()
     private val modelLocks = mutableMapOf<Long, Mutex>()
     private val externalLocks = mutableMapOf<String, Mutex>()
+    private val weeklyReportLocks = mutableMapOf<Long, Mutex>()
     private val createLock = Mutex()
     private val bindingLock = Mutex()
     private val mutableKeyRevision = MutableStateFlow(0L)
@@ -30,6 +31,9 @@ internal class AiModelOperationCoordinator {
         mutexFor(modelId = null, externalId = externalId).withLock { block() }
 
     suspend fun <T> withBindings(block: suspend () -> T): T = bindingLock.withLock { block() }
+
+    suspend fun <T> withWeeklyReport(startEpochDay: Long, block: suspend () -> T): T =
+        synchronized(monitor) { weeklyReportLocks.getOrPut(startEpochDay) { Mutex() } }.withLock { block() }
 
     fun invalidateKeys() { mutableKeyRevision.update { it + 1L } }
 
