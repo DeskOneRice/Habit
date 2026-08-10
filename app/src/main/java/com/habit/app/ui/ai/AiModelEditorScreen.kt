@@ -105,7 +105,7 @@ fun AiModelEditorScreen(
                 onNavigation = onBack,
                 actions = {
                     HabitTopAction(
-                        text = "保存",
+                        text = if (state.saving) "保存中…" else "保存",
                         contentDescription = "保存模型配置",
                         onClick = {
                             if (baseUrl.trim().startsWith("http://") && !allowInsecureHttp) {
@@ -115,6 +115,7 @@ fun AiModelEditorScreen(
                             }
                         },
                         modifier = Modifier.testTag("ai_model_save"),
+                        enabled = !state.saving,
                     )
                 },
             )

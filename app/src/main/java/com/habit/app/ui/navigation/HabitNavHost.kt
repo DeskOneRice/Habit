@@ -458,5 +458,6 @@ private class AiSettingsFactory(private val container: AppContainer) : ViewModel
             repository = container.aiModelRepository,
             secretStore = container.aiSecretStore,
             client = container.aiCompletionClient,
+            coordinator = container.aiModelOperationCoordinator,
         ) as T
 }

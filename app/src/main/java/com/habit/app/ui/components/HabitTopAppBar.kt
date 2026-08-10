@@ -31,9 +31,11 @@ fun HabitTopAction(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.labelLarge,
     contentColor: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true,
 ) {
     TextButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .semantics { this.contentDescription = contentDescription },

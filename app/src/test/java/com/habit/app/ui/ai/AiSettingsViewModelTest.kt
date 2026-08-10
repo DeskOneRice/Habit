@@ -15,6 +15,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -68,12 +70,31 @@ class AiSettingsViewModelTest {
     }
 
     @Test
+    fun roomEmissionBeforeSecretWriteStillRefreshesMaskedSuffix() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore().apply {
+            onPut = { externalId ->
+                assertEquals("external-1", externalId)
+                assertEquals("模型", repository.models.value.single().name)
+            }
+        }
+        val viewModel = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock)
+        advanceUntilIdle()
+
+        viewModel.saveModel(draft(name = "模型"), "sk-after-room-4321")
+        advanceUntilIdle()
+
+        assertEquals("••••4321", viewModel.state.value.models.single().keySuffix)
+    }
+
+    @Test
     fun visionTestUsesGeneratedNeutralImageAndRejectsTextOnlyBinding() = runTest(dispatcher) {
         val repository = FakeAiModelRepository()
         val secrets = FakeAiSecretStore()
         val client = FakeAiCompletionClient()
         val viewModel = AiSettingsViewModel(repository, secrets, client, clock)
         viewModel.saveModel(draft(name = "纯文本", vision = false), "sk-text")
+        advanceUntilIdle()
         viewModel.saveModel(draft(name = "视觉", vision = true), "sk-vision")
         advanceUntilIdle()
         val textOnly = repository.models.value.first { it.name == "纯文本" }
@@ -135,7 +156,9 @@ class AiSettingsViewModelTest {
         val client = FakeAiCompletionClient()
         val viewModel = AiSettingsViewModel(repository, secrets, client, clock)
         viewModel.saveModel(draft(name = "可用视觉", vision = true), "sk-a")
+        advanceUntilIdle()
         viewModel.saveModel(draft(name = "未测试视觉", vision = true), "sk-b")
+        advanceUntilIdle()
         viewModel.saveModel(draft(name = "停用文本", enabled = false), "sk-c")
         advanceUntilIdle()
         val tested = repository.models.value.first { it.name == "可用视觉" }
@@ -221,16 +244,226 @@ class AiSettingsViewModelTest {
         assertEquals("模型配置保存失败，请重试", viewModel.state.value.message)
     }
 
+    @Test
+    fun sameModelTextAndVisionTestsAreSerializedWithoutLosingEitherSnapshot() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val setup = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        setup.saveModel(draft(name = "视觉", vision = true), "sk-vision")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        val client = SuspendedAiCompletionClient()
+        val viewModel = AiSettingsViewModel(repository, secrets, client, clock, coordinator)
+
+        viewModel.testText(id)
+        viewModel.testVision(id)
+        dispatcher.scheduler.runCurrent()
+
+        assertTrue(client.textStarted.isCompleted)
+        assertFalse(client.visionStarted.isCompleted)
+        assertTrue(id in viewModel.state.value.busyModelIds)
+        client.releaseText.complete(Unit)
+        dispatcher.scheduler.runCurrent()
+        assertTrue(client.visionStarted.isCompleted)
+        client.releaseVision.complete(Unit)
+        advanceUntilIdle()
+
+        val result = viewModel.state.value.models.single()
+        assertEquals(AiTestStatus.PASSED, result.textStatus)
+        assertEquals(AiTestStatus.PASSED, result.visionStatus)
+        assertFalse(id in viewModel.state.value.busyModelIds)
+    }
+
+    @Test
+    fun editFromAnotherViewModelWaitsForTestThenResetsOldResultAndBindings() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val setup = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        setup.saveModel(draft(name = "共享", vision = true), "sk-shared")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        setup.testText(id)
+        advanceUntilIdle()
+        setup.bind(AiFeature.WEEKLY_REPORT, id)
+        advanceUntilIdle()
+
+        val client = SuspendedAiCompletionClient()
+        val tester = AiSettingsViewModel(repository, secrets, client, clock, coordinator)
+        val editor = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        tester.testText(id)
+        dispatcher.scheduler.runCurrent()
+        editor.saveModel(id, draft(name = "共享", url = "https://new.example/v1", vision = true), "")
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals("https://api.example/v1", repository.models.value.single().baseUrl)
+        client.releaseText.complete(Unit)
+        advanceUntilIdle()
+
+        val final = editor.state.value.models.single()
+        assertEquals("https://new.example/v1", final.config.baseUrl)
+        assertEquals(AiTestStatus.UNTESTED, final.textStatus)
+        assertEquals(AiTestStatus.UNTESTED, final.visionStatus)
+        assertTrue(repository.bindings.value.all { it.modelConfigId == null })
+    }
+
+    @Test
+    fun configurationDisableCapabilityRemovalAndFailedTestClearAffectedBindings() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val client = FakeAiCompletionClient()
+        val viewModel = AiSettingsViewModel(repository, secrets, client, clock, AiModelOperationCoordinator())
+        viewModel.saveModel(draft(name = "共享", vision = true), "sk-shared")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        viewModel.testText(id)
+        viewModel.testVision(id)
+        advanceUntilIdle()
+        viewModel.bind(AiFeature.WEEKLY_REPORT, id)
+        viewModel.bind(AiFeature.MEAL_CALORIE_ESTIMATE, id)
+        advanceUntilIdle()
+
+        viewModel.saveModel(id, draft(name = "共享", vision = true, enabled = false), "")
+        advanceUntilIdle()
+        assertTrue(repository.bindings.value.all { it.modelConfigId == null })
+        assertEquals(AiTestStatus.UNTESTED, viewModel.state.value.models.single().textStatus)
+        assertEquals(AiTestStatus.UNTESTED, viewModel.state.value.models.single().visionStatus)
+        assertNull(repository.models.value.single().lastTestedAt)
+
+        viewModel.saveModel(id, draft(name = "共享", vision = true, enabled = true), "")
+        viewModel.testText(id)
+        viewModel.testVision(id)
+        advanceUntilIdle()
+        viewModel.bind(AiFeature.WEEKLY_REPORT, id)
+        viewModel.bind(AiFeature.MEAL_CALORIE_ESTIMATE, id)
+        advanceUntilIdle()
+        viewModel.saveModel(id, draft(name = "共享", vision = false), "")
+        advanceUntilIdle()
+        assertTrue(repository.bindings.value.all { it.modelConfigId == null })
+
+        repository.bind(AiFeature.MEAL_CALORIE_ESTIMATE, id)
+        viewModel.testVision(id)
+        advanceUntilIdle()
+        assertNull(repository.bindings.value.first { it.feature == AiFeature.MEAL_CALORIE_ESTIMATE }.modelConfigId)
+
+        viewModel.testText(id)
+        advanceUntilIdle()
+        viewModel.bind(AiFeature.WEEKLY_REPORT, id)
+        advanceUntilIdle()
+        secrets.remove("external-$id")
+        viewModel.testText(id)
+        advanceUntilIdle()
+        assertEquals(AiTestStatus.NEEDS_KEY, viewModel.state.value.models.single().textStatus)
+        assertNull(repository.bindings.value.first { it.feature == AiFeature.WEEKLY_REPORT }.modelConfigId)
+
+        secrets.put("external-$id", "sk-restored")
+        viewModel.testText(id)
+        advanceUntilIdle()
+        viewModel.bind(AiFeature.WEEKLY_REPORT, id)
+        advanceUntilIdle()
+        client.failure = AiServiceFailure(AiFailureKind.AUTH, "API Key 无效或没有模型权限")
+        viewModel.testText(id)
+        advanceUntilIdle()
+        assertNull(repository.bindings.value.first { it.feature == AiFeature.WEEKLY_REPORT }.modelConfigId)
+    }
+
+    @Test
+    fun bindRevalidatesLatestDisabledModelInsideCoordinator() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val staleBinder = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        staleBinder.saveModel(draft(name = "模型"), "sk")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        staleBinder.testText(id)
+        advanceUntilIdle()
+        assertEquals(listOf(id), staleBinder.bindingOptions(AiFeature.WEEKLY_REPORT).map { it.id })
+
+        val editor = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        editor.saveModel(id, draft(name = "模型", enabled = false), "")
+        advanceUntilIdle()
+        staleBinder.bind(AiFeature.WEEKLY_REPORT, id)
+        advanceUntilIdle()
+
+        assertTrue(repository.bindings.value.none { it.modelConfigId == id })
+        assertEquals("该模型未通过文本能力测试", staleBinder.state.value.message)
+    }
+
+    @Test
+    fun failedNewSecretWriteCompensatesRoomAndFailedCompensationRetriesSameIdOnce() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore().apply { failPut = true }
+        val viewModel = AiSettingsViewModel(
+            repository, secrets, FakeAiCompletionClient(), clock, AiModelOperationCoordinator(),
+        )
+
+        viewModel.saveModel(draft(name = "新模型"), "sk-new")
+        advanceUntilIdle()
+        assertTrue(repository.models.value.isEmpty())
+        assertEquals(1, repository.deleteCalls)
+        assertNull(viewModel.state.value.recoverableModelId)
+
+        repository.failDelete = true
+        viewModel.saveModel(draft(name = "重试模型"), "sk-new")
+        advanceUntilIdle()
+        val retainedId = viewModel.state.value.recoverableModelId
+        assertNotNull(retainedId)
+        assertEquals(AiTestStatus.NEEDS_KEY, repository.models.value.single().lastTestStatus)
+
+        repository.failDelete = false
+        secrets.failPut = false
+        var savedCallbacks = 0
+        viewModel.saveModel(draft(name = "重试模型"), "sk-valid") { savedCallbacks++ }
+        viewModel.saveModel(draft(name = "重试模型"), "sk-valid") { savedCallbacks++ }
+        advanceUntilIdle()
+
+        assertEquals(1, repository.models.value.size)
+        assertEquals(retainedId, repository.models.value.single().id)
+        assertEquals(1, savedCallbacks)
+        assertEquals(3, repository.saveCalls)
+        assertFalse(viewModel.state.value.saving)
+    }
+
+    @Test
+    fun deleteDatabaseFailureKeepsKeyAndDoubleConfirmDeletesOnlyOnce() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val viewModel = AiSettingsViewModel(
+            repository, secrets, FakeAiCompletionClient(), clock, AiModelOperationCoordinator(),
+        )
+        viewModel.saveModel(draft(name = "删除模型"), "sk-keep")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        repository.failDelete = true
+        viewModel.requestDelete(id)
+        advanceUntilIdle()
+        viewModel.confirmDelete()
+        advanceUntilIdle()
+        assertEquals("sk-keep", secrets.get("external-1"))
+        assertEquals(1, repository.models.value.size)
+
+        repository.failDelete = false
+        viewModel.confirmDelete()
+        viewModel.confirmDelete()
+        advanceUntilIdle()
+        assertTrue(repository.models.value.isEmpty())
+        assertEquals(2, repository.deleteCalls)
+        assertNull(secrets.get("external-1"))
+    }
+
     private fun draft(
         name: String,
         url: String = "https://api.example/v1",
         vision: Boolean = false,
         enabled: Boolean = true,
+        text: Boolean = true,
     ) = AiModelConfigDraft(
         name = name,
         baseUrl = url,
         modelId = "gpt-test",
-        supportsText = true,
+        supportsText = text,
         supportsVision = vision,
         allowInsecureHttp = false,
         enabled = enabled,
@@ -241,12 +474,16 @@ private class FakeAiModelRepository : AiModelRepository {
     val models = MutableStateFlow<List<AiModelConfig>>(emptyList())
     val bindings = MutableStateFlow<List<AiFeatureBinding>>(emptyList())
     private var nextId = 1L
+    var failDelete = false
+    var saveCalls = 0
+    var deleteCalls = 0
 
     override fun observeModels(): Flow<List<AiModelConfig>> = models
     override fun observeBindings(): Flow<List<AiFeatureBinding>> = bindings
     override fun observeModel(id: Long): Flow<AiModelConfig?> = MutableStateFlow(models.value.find { it.id == id })
 
     override suspend fun saveModel(id: Long?, draft: AiModelConfigDraft): Long {
+        saveCalls++
         val existing = id?.let { modelId -> models.value.first { it.id == modelId } }
         val savedId = existing?.id ?: nextId++
         val now = 1L
@@ -282,6 +519,8 @@ private class FakeAiModelRepository : AiModelRepository {
     }
 
     override suspend fun deleteModel(id: Long) {
+        deleteCalls++
+        if (failDelete) error("database delete failed")
         models.value = models.value.filterNot { it.id == id }
         bindings.value = bindings.value.map { if (it.modelConfigId == id) it.copy(modelConfigId = null) else it }
     }
@@ -290,8 +529,10 @@ private class FakeAiModelRepository : AiModelRepository {
 private class FakeAiSecretStore : AiSecretStore {
     private val values = mutableMapOf<String, String>()
     var failPut = false
+    var onPut: ((String) -> Unit)? = null
     override suspend fun put(externalId: String, apiKey: String) {
         if (failPut) error("storage failed")
+        onPut?.invoke(externalId)
         values[externalId] = apiKey
     }
     override suspend fun get(externalId: String): String? = values[externalId]
@@ -325,6 +566,36 @@ private class FakeAiCompletionClient : AiCompletionClient {
     ): String {
         failure?.let { throw it }
         lastVisionImage = images.single()
+        return "OK"
+    }
+}
+
+private class SuspendedAiCompletionClient : AiCompletionClient {
+    val textStarted = CompletableDeferred<Unit>()
+    val visionStarted = CompletableDeferred<Unit>()
+    val releaseText = CompletableDeferred<Unit>()
+    val releaseVision = CompletableDeferred<Unit>()
+
+    override suspend fun completeText(
+        model: AiModelConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+    ): String {
+        textStarted.complete(Unit)
+        releaseText.await()
+        return "OK"
+    }
+
+    override suspend fun completeVision(
+        model: AiModelConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+        images: List<AiPreparedImage>,
+    ): String {
+        visionStarted.complete(Unit)
+        releaseVision.await()
         return "OK"
     }
 }

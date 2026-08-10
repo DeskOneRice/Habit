@@ -137,6 +137,7 @@ fun AiSettingsScreen(
             confirmButton = {
                 Button(
                     onClick = viewModel::confirmDelete,
+                    enabled = impact.modelId !in state.deletingModelIds,
                     modifier = Modifier.sizeIn(minHeight = 48.dp).testTag("ai_delete_confirm"),
                 ) { Text("删除") }
             },
@@ -230,14 +231,14 @@ private fun AiModelCard(
             if (item.config.supportsText) {
                 Button(
                     onClick = { viewModel.testText(item.id) },
-                    enabled = item.id !in state.busyTextTestIds,
+                    enabled = item.id !in state.busyModelIds,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("ai_test_text_${item.id}"),
                 ) { Text(testButtonLabel("测试文本", item.textStatus, item.id in state.busyTextTestIds)) }
             }
             if (item.config.supportsVision) {
                 Button(
                     onClick = { viewModel.testVision(item.id) },
-                    enabled = item.id !in state.busyVisionTestIds,
+                    enabled = item.id !in state.busyModelIds,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("ai_test_vision_${item.id}"),
                 ) { Text(testButtonLabel("测试图片", item.visionStatus, item.id in state.busyVisionTestIds)) }
             }

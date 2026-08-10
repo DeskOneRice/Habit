@@ -7,6 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -40,6 +42,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -108,15 +111,45 @@ class AiSettingsFlowTest {
     }
 
     @Test
+    fun clickingTestDisablesBothCapabilitiesThenAddsBindingCandidateOnCompletion() {
+        val client = SuspendedFlowAiClient()
+        val fixture = fixture(
+            model(1, "可控视觉", vision = true),
+            client = client,
+        )
+        runBlocking { fixture.secrets.put("external-1", "sk-controlled") }
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiSettingsScreen(fixture.viewModel, {}, {}, {})
+            }
+        }
+
+        composeRule.onNodeWithTag("ai_test_text_1").performClick()
+        composeRule.waitUntil(5_000) { client.textStarted.isCompleted }
+        composeRule.onNodeWithTag("ai_test_text_1").assertIsNotEnabled()
+        composeRule.onNodeWithTag("ai_test_vision_1").assertIsNotEnabled()
+
+        client.releaseText.complete(Unit)
+        composeRule.waitUntil(5_000) {
+            fixture.viewModel.state.value.models.single().textStatus == AiTestStatus.PASSED
+        }
+        composeRule.onNodeWithTag("ai_test_text_1").assertIsEnabled()
+        composeRule.onNodeWithTag("ai_test_vision_1").assertIsEnabled()
+        composeRule.onNodeWithText("功能绑定").performClick()
+        composeRule.onNodeWithTag("binding_WEEKLY_REPORT").performClick()
+        composeRule.onNodeWithText("可控视觉").assertIsDisplayed()
+    }
+
+    @Test
     fun twoModelsShowMaskedKeysCapabilityAndTestButtons() {
         val fixture = fixture(
             model(1, "周报模型", vision = false),
             model(2, "图片模型", vision = true),
+            secretValues = mapOf(
+                "external-1" to "sk-week-1234",
+                "external-2" to "sk-image-5678",
+            ),
         )
-        runBlocking {
-            fixture.secrets.put("external-1", "sk-week-1234")
-            fixture.secrets.put("external-2", "sk-image-5678")
-        }
 
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
@@ -228,11 +261,16 @@ class AiSettingsFlowTest {
     private fun fixture(
         vararg models: AiModelConfig,
         bindings: List<AiFeatureBinding> = emptyList(),
+        client: AiCompletionClient = FlowAiClient(),
+        secretValues: Map<String, String> = emptyMap(),
     ): Fixture {
         val repository = FlowAiRepository(models.toList(), bindings)
         val secrets = FlowAiSecrets()
+        runBlocking {
+            secretValues.forEach { (externalId, apiKey) -> secrets.put(externalId, apiKey) }
+        }
         val clock = Clock.fixed(Instant.parse("2026-08-10T04:05:06Z"), ZoneOffset.UTC)
-        return Fixture(repository, secrets, AiSettingsViewModel(repository, secrets, FlowAiClient(), clock))
+        return Fixture(repository, secrets, AiSettingsViewModel(repository, secrets, client, clock))
     }
 
     private fun fillEditor(name: String, modelId: String, key: String) {
@@ -328,4 +366,28 @@ private class FlowAiSecrets : AiSecretStore {
 private class FlowAiClient : AiCompletionClient {
     override suspend fun completeText(model: AiModelConfig, apiKey: String, systemPrompt: String, userPrompt: String) = "OK"
     override suspend fun completeVision(model: AiModelConfig, apiKey: String, systemPrompt: String, userPrompt: String, images: List<AiPreparedImage>) = "OK"
+}
+
+private class SuspendedFlowAiClient : AiCompletionClient {
+    val textStarted = CompletableDeferred<Unit>()
+    val releaseText = CompletableDeferred<Unit>()
+
+    override suspend fun completeText(
+        model: AiModelConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+    ): String {
+        textStarted.complete(Unit)
+        releaseText.await()
+        return "OK"
+    }
+
+    override suspend fun completeVision(
+        model: AiModelConfig,
+        apiKey: String,
+        systemPrompt: String,
+        userPrompt: String,
+        images: List<AiPreparedImage>,
+    ): String = "OK"
 }

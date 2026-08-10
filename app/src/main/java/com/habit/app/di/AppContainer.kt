@@ -47,6 +47,7 @@ import com.habit.app.domain.repository.AiModelRepository
 import com.habit.app.domain.repository.AiWeeklyReportRepository
 import com.habit.app.domain.time.DeviceDateProvider
 import com.habit.app.domain.time.SystemDeviceDateProvider
+import com.habit.app.ui.ai.AiModelOperationCoordinator
 import java.time.Clock
 
 private const val THEME_PREFERENCES_FILE = "habit_theme_preferences"
@@ -87,6 +88,7 @@ class AppContainer(
     val aiWeeklyReportRepository: AiWeeklyReportRepository = RoomAiWeeklyReportRepository(database, clock)
     val aiSecretStore: AiSecretStore = AndroidKeystoreAiSecretStore(applicationContext)
     val aiCompletionClient: AiCompletionClient = OpenAiCompatibleClient(UrlConnectionAiHttpTransport())
+    internal val aiModelOperationCoordinator = AiModelOperationCoordinator()
     val themeRepository = ThemePreferencesRepository(applicationContext.themeDataStore, clock)
     val emojiPreferencesRepository = EmojiPreferencesRepository(applicationContext.themeDataStore, clock)
     val backupPreferencesRepository = BackupPreferencesRepository(applicationContext.themeDataStore)
