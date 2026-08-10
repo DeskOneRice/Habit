@@ -7,6 +7,7 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
@@ -21,13 +22,14 @@ class UrlConnectionAiHttpTransport internal constructor(
     },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val onConnectionPublished: (() -> Unit)? = null,
+    private val onFirstIoReady: (() -> Unit)? = null,
 ) : AiHttpTransport {
     override suspend fun execute(request: AiHttpRequest): AiHttpResponse = withContext(dispatcher) {
-        val state = AtomicReference<ConnectionState>(ConnectionState.Waiting)
+        val coordinator = ConnectionCoordinator()
         suspendCancellableCoroutine { continuation ->
-            continuation.invokeOnCancellation { cancel(state) }
+            continuation.invokeOnCancellation { coordinator.cancel() }
             try {
-                val response = executeBlocking(request, state)
+                val response = executeBlocking(request, coordinator)
                 if (continuation.isActive) continuation.resume(response)
             } catch (cancellation: CancellationException) {
                 if (continuation.isActive) continuation.resumeWithException(cancellation)
@@ -50,24 +52,25 @@ class UrlConnectionAiHttpTransport internal constructor(
                     continuation.resumeWithException(invalidTransportResponse("Invalid transport response"))
                 }
             } finally {
-                cancel(state)
+                coordinator.cancel()
             }
         }
     }
 
     private fun executeBlocking(
         request: AiHttpRequest,
-        state: AtomicReference<ConnectionState>,
+        coordinator: ConnectionCoordinator,
     ): AiHttpResponse {
         var currentUrl = URL(request.url)
         repeat(MAX_REDIRECTS + 1) { redirectCount ->
             val connection = connectionFactory(currentUrl)
             try {
-                val published = publish(state, connection)
+                coordinator.publish(connection)
                 onConnectionPublished?.invoke()
-                startIo(state, published)
-                configure(connection, request)
-                connection.outputStream.use { it.write(request.body) }
+                coordinator.startFirstIo(connection) {
+                    configure(connection, request)
+                    onFirstIoReady?.invoke()
+                }.use { it.write(request.body) }
                 val statusCode = connection.responseCode
                 if (statusCode in REDIRECT_CODES) {
                     if (redirectCount == MAX_REDIRECTS) {
@@ -94,61 +97,11 @@ class UrlConnectionAiHttpTransport internal constructor(
                     return AiHttpResponse(statusCode, body)
                 }
             } finally {
-                finishConnection(state, connection)
+                coordinator.finish(connection)
                 connection.disconnect()
             }
         }
         throw invalidTransportResponse("Too many redirects")
-    }
-
-    private fun publish(
-        state: AtomicReference<ConnectionState>,
-        connection: HttpURLConnection,
-    ): ConnectionState.Published {
-        val published = ConnectionState.Published(connection)
-        if (!state.compareAndSet(ConnectionState.Waiting, published)) {
-            connection.disconnect()
-            throw CancellationException("AI HTTP request cancelled")
-        }
-        return published
-    }
-
-    private fun startIo(state: AtomicReference<ConnectionState>, published: ConnectionState.Published) {
-        if (!state.compareAndSet(published, ConnectionState.IoStarted(published.connection))) {
-            published.connection.disconnect()
-            throw CancellationException("AI HTTP request cancelled")
-        }
-    }
-
-    private fun finishConnection(state: AtomicReference<ConnectionState>, connection: HttpURLConnection) {
-        while (true) {
-            when (val current = state.get()) {
-                is ConnectionState.Published -> if (current.connection !== connection) return else {
-                    if (state.compareAndSet(current, ConnectionState.Waiting)) return
-                }
-                is ConnectionState.IoStarted -> if (current.connection !== connection) return else {
-                    if (state.compareAndSet(current, ConnectionState.Waiting)) return
-                }
-                ConnectionState.Cancelled, ConnectionState.Waiting -> return
-            }
-        }
-    }
-
-    private fun cancel(state: AtomicReference<ConnectionState>) {
-        while (true) {
-            when (val current = state.get()) {
-                ConnectionState.Cancelled -> return
-                ConnectionState.Waiting -> if (state.compareAndSet(current, ConnectionState.Cancelled)) return
-                is ConnectionState.Published -> if (state.compareAndSet(current, ConnectionState.Cancelled)) {
-                    current.connection.disconnect()
-                    return
-                }
-                is ConnectionState.IoStarted -> if (state.compareAndSet(current, ConnectionState.Cancelled)) {
-                    current.connection.disconnect()
-                    return
-                }
-            }
-        }
     }
 
     private fun configure(connection: HttpURLConnection, request: AiHttpRequest) {
@@ -198,10 +151,86 @@ class UrlConnectionAiHttpTransport internal constructor(
         val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
     }
 
-    private sealed interface ConnectionState {
-        data object Waiting : ConnectionState
-        data class Published(val connection: HttpURLConnection) : ConnectionState
-        data class IoStarted(val connection: HttpURLConnection) : ConnectionState
-        data object Cancelled : ConnectionState
+    private class ConnectionCoordinator {
+        private val lock = ReentrantLock(true)
+        private val activeConnection = AtomicReference<HttpURLConnection?>()
+
+        @Volatile
+        private var startIoHoldsLock = false
+        private var state: ConnectionState = ConnectionState.Waiting
+
+        fun publish(connection: HttpURLConnection) {
+            lock.lock()
+            try {
+                if (state == ConnectionState.Cancelled) {
+                    connection.disconnect()
+                    throw CancellationException("AI HTTP request cancelled")
+                }
+                check(state == ConnectionState.Waiting) { "AI HTTP connection state is invalid" }
+                activeConnection.set(connection)
+                state = ConnectionState.Published
+            } finally {
+                lock.unlock()
+            }
+        }
+
+        fun startFirstIo(connection: HttpURLConnection, configureAndWait: () -> Unit) = run {
+            lock.lock()
+            try {
+                if (state != ConnectionState.Published || activeConnection.get() !== connection) {
+                    connection.disconnect()
+                    throw CancellationException("AI HTTP request cancelled")
+                }
+                state = ConnectionState.IoStarted
+                startIoHoldsLock = true
+                configureAndWait()
+                connection.outputStream
+            } finally {
+                startIoHoldsLock = false
+                lock.unlock()
+            }
+        }
+
+        fun finish(connection: HttpURLConnection) {
+            lock.lock()
+            try {
+                if (activeConnection.compareAndSet(connection, null) && state != ConnectionState.Cancelled) {
+                    state = ConnectionState.Waiting
+                }
+            } finally {
+                lock.unlock()
+            }
+        }
+
+        fun cancel() {
+            if (lock.tryLock()) {
+                try {
+                    cancelWhileLocked()
+                } finally {
+                    lock.unlock()
+                }
+                return
+            }
+
+            if (startIoHoldsLock) activeConnection.get()?.disconnect()
+            lock.lock()
+            try {
+                cancelWhileLocked()
+            } finally {
+                lock.unlock()
+            }
+        }
+
+        private fun cancelWhileLocked() {
+            state = ConnectionState.Cancelled
+            activeConnection.getAndSet(null)?.disconnect()
+        }
+    }
+
+    private enum class ConnectionState {
+        Waiting,
+        Published,
+        IoStarted,
+        Cancelled,
     }
 }

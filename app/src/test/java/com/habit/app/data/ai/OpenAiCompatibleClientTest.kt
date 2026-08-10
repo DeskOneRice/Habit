@@ -333,7 +333,7 @@ class OpenAiCompatibleClientTest {
     }
 
     @Test
-    fun cancellationAfterPublicationButBeforeFirstIoNeverStartsIo() = runBlocking {
+    fun cancellationAfterPublicationBeforeStartLockNeverStartsIo() = runBlocking {
         val published = CountDownLatch(1)
         val releaseFirstIo = CountDownLatch(1)
         val connection = FakeHttpURLConnection(
@@ -360,6 +360,37 @@ class OpenAiCompatibleClientTest {
         assertEquals(0, connection.outputStreamCalls.get())
         assertEquals(0, connection.responseCodeCalls.get())
         assertTrue(connection.disconnected.get())
+    }
+
+    @Test
+    fun cancellationAfterStartLockWinsDisconnectsBeforeWaitingForCriticalSection() = runBlocking {
+        val insideStartLock = CountDownLatch(1)
+        val releaseFirstIo = CountDownLatch(1)
+        val connection = FakeHttpURLConnection(
+            URL("https://api.example.com/chat/completions"),
+            200,
+            "ok".encodeToByteArray(),
+        )
+        val transport = UrlConnectionAiHttpTransport(
+            connectionFactory = { connection },
+            dispatcher = Dispatchers.IO,
+            onFirstIoReady = {
+                insideStartLock.countDown()
+                releaseFirstIo.await(5, TimeUnit.SECONDS)
+            },
+        )
+
+        val call = launch(Dispatchers.Default) { transport.execute(request(connection.url.toString())) }
+        assertTrue(insideStartLock.await(2, TimeUnit.SECONDS))
+        val cancellation = launch(Dispatchers.Default) { call.cancelAndJoin() }
+        assertTrue(connection.disconnectCalled.await(2, TimeUnit.SECONDS))
+        assertFalse(cancellation.isCompleted)
+        releaseFirstIo.countDown()
+        cancellation.join()
+
+        assertTrue(call.isCancelled)
+        assertTrue(connection.disconnected.get())
+        assertEquals(1, connection.outputStreamCalls.get())
     }
 
     @Test
@@ -415,6 +446,7 @@ class OpenAiCompatibleClientTest {
         private val suppliedResponseStream: InputStream? = null,
     ) : HttpURLConnection(url) {
         val disconnected = AtomicBoolean(false)
+        val disconnectCalled = CountDownLatch(1)
         val responseCodeCalls = AtomicInteger(0)
         val outputStreamCalls = AtomicInteger(0)
         val writtenBody = ByteArrayOutputStream()
@@ -423,6 +455,7 @@ class OpenAiCompatibleClientTest {
         override fun usingProxy(): Boolean = false
         override fun disconnect() {
             disconnected.set(true)
+            disconnectCalled.countDown()
         }
 
         override fun getOutputStream(): ByteArrayOutputStream {
@@ -449,17 +482,11 @@ class OpenAiCompatibleClientTest {
 
     private class BlockingHttpURLConnection(url: URL) : FakeHttpURLConnection(url, 200) {
         val responseStarted = CountDownLatch(1)
-        val disconnectCalled = CountDownLatch(1)
 
         override fun getResponseCode(): Int {
             responseStarted.countDown()
             disconnectCalled.await(5, TimeUnit.SECONDS)
             return 200
-        }
-
-        override fun disconnect() {
-            super.disconnect()
-            disconnectCalled.countDown()
         }
     }
 

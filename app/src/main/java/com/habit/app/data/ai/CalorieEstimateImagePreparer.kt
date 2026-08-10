@@ -47,6 +47,8 @@ class CalorieEstimateImagePreparer internal constructor(
     private val encodeJpeg: (Bitmap, OutputStream) -> Boolean = { bitmap, output ->
         bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
     },
+    private val ownerFactory: (File) -> PreparedAiImage = { PreparedAiImage(it) },
+    private val rawFileDelete: (File) -> Boolean = { it.delete() },
 ) {
     suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage> {
         val prepared = mutableListOf<PreparedAiImage>()
@@ -69,7 +71,7 @@ class CalorieEstimateImagePreparer internal constructor(
                         try {
                             afterTemporaryFileCreated?.invoke(output)
                             currentCoroutineContext().ensureActive()
-                            owner = PreparedAiImage(output)
+                            owner = ownerFactory(output)
                             try {
                                 prepared.add(owner)
                             } catch (failure: Throwable) {
@@ -82,7 +84,12 @@ class CalorieEstimateImagePreparer internal constructor(
                                 }
                             }
                         } catch (failure: Throwable) {
-                            if (owner == null) deleteAfterFailure(output, failure)
+                            if (owner == null) {
+                                val deleted = deleteRawBestEffort(output)
+                                if (!deleted && failure !is OutOfMemoryError) {
+                                    failure.addSuppressed(IOException("Unable to clean temporary AI image"))
+                                }
+                            }
                             throw failure
                         }
                     } finally {
@@ -305,9 +312,21 @@ class CalorieEstimateImagePreparer internal constructor(
         if (bitmap != null && bitmap !== returned && !bitmap.isRecycled) bitmap.recycle()
     }
 
-    private fun deleteAfterFailure(file: File, failure: Throwable) {
-        val owner = PreparedAiImage(file)
-        closeAfterFailure(owner, failure)
+    private fun deleteRawBestEffort(file: File): Boolean {
+        var attempts = 0
+        while (attempts < RAW_TEMP_DELETE_ATTEMPTS) {
+            attempts++
+            try {
+                if (!file.exists() || rawFileDelete(file)) return true
+            } catch (_: Throwable) {
+                // The original failure, including the exact OOM instance, always wins.
+            }
+        }
+        return try {
+            !file.exists()
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun closeAfterFailure(image: PreparedAiImage, failure: Throwable) {
@@ -342,6 +361,7 @@ class CalorieEstimateImagePreparer internal constructor(
         const val ORIENTATION_TAG = 0x0112
         const val SHORT_TYPE = 3
         const val BITMAP_STAGE_DECODED = "decoded"
+        const val RAW_TEMP_DELETE_ATTEMPTS = 3
         val EXIF_SIGNATURE = byteArrayOf(
             'E'.code.toByte(),
             'x'.code.toByte(),

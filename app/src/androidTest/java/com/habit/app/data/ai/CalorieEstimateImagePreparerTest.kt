@@ -137,6 +137,34 @@ class CalorieEstimateImagePreparerTest {
     }
 
     @Test
+    fun ownerAllocationOomUsesRawDeleteAndRethrowsSameInstance() = runBlocking {
+        val original = File(testDirectory, "owner-oom-original.jpg")
+        createExifOrientedFixture(original, width = 64, height = 48, orientation = 1)
+        val preparedDirectory = File(testDirectory, "owner-oom-prepared")
+        val expected = OutOfMemoryError("owner allocation")
+        val rawDeleteCalls = AtomicInteger(0)
+        val preparer = CalorieEstimateImagePreparer(
+            temporaryDirectory = preparedDirectory,
+            ownerFactory = { throw expected },
+            rawFileDelete = { file ->
+                rawDeleteCalls.incrementAndGet()
+                file.delete()
+            },
+        )
+
+        val actual = try {
+            preparer.prepare(listOf(original))
+            null
+        } catch (failure: OutOfMemoryError) {
+            failure
+        }
+
+        assertTrue(actual === expected)
+        assertTrue(rawDeleteCalls.get() > 0)
+        assertTrue(preparedDirectory.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
     fun encodingThrowableDeletesRegisteredTempFile() = runBlocking {
         val original = File(testDirectory, "encode-owner-original.jpg")
         createExifOrientedFixture(original, width = 64, height = 48, orientation = 1)
