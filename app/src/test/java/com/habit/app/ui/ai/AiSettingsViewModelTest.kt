@@ -14,14 +14,18 @@ import com.habit.app.domain.repository.AiModelRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -29,6 +33,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -85,6 +90,51 @@ class AiSettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals("••••4321", viewModel.state.value.models.single().keySuffix)
+    }
+
+    @Test
+    fun editorKeyWriteRefreshesSuffixInSeparateSettingsViewModel() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = SuspendedPutSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val id = repository.saveModel(null, draft(name = "模型"))
+        val settings = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        advanceUntilIdle()
+        assertNull(settings.state.value.models.single().keySuffix)
+
+        val editor = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        editor.saveModel(id, draft(name = "模型"), "sk-shared-4321")
+        runCurrent()
+        secrets.putStarted.await()
+        assertNull(settings.state.value.models.single().keySuffix)
+        secrets.releasePut.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("••••4321", settings.state.value.models.single().keySuffix)
+    }
+
+    @Test
+    fun newerKeyRevisionCancelsSlowNullSuffixReadWithoutLateOverwrite() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = SlowFirstSuffixSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val id = repository.saveModel(null, draft(name = "模型"))
+        val settings = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        runCurrent()
+        secrets.firstReadStarted.await()
+
+        val editor = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+        editor.saveModel(id, draft(name = "模型"), "sk-shared-9876")
+        runCurrent()
+
+        try {
+            assertTrue(secrets.firstReadCancelled.isCompleted)
+            assertEquals("••••9876", settings.state.value.models.single().keySuffix)
+        } finally {
+            secrets.releaseFirstRead.complete(Unit)
+            advanceUntilIdle()
+        }
+        assertEquals("••••9876", settings.state.value.models.single().keySuffix)
     }
 
     @Test
@@ -427,6 +477,83 @@ class AiSettingsViewModelTest {
     }
 
     @Test
+    fun cancellingNewSaveDuringCommittedSecretPutRemovesRoomAndSecretAndRethrowsCause() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = SuspendedPutSecretStore(commitBeforeSuspend = true)
+        val viewModel = AiSettingsViewModel(
+            repository, secrets, FakeAiCompletionClient(), clock, AiModelOperationCoordinator(),
+        )
+        val cancellation = CancellationException("editor closed")
+        var completionCause: Throwable? = null
+
+        val job = viewModel.saveModel(draft(name = "取消模型"), "sk-cancelled")
+        job.invokeOnCompletion { completionCause = it }
+        runCurrent()
+        secrets.putStarted.await()
+        assertEquals(1, repository.models.value.size)
+
+        job.cancel(cancellation)
+        advanceUntilIdle()
+
+        assertSame(cancellation, completionCause)
+        assertTrue(repository.models.value.isEmpty())
+        assertNull(secrets.get("external-1"))
+        assertNull(viewModel.state.value.recoverableModelId)
+    }
+
+    @Test
+    fun cancellingNewSaveWhileWaitingForModelLockCompensatesInsertedRow() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val coordinator = AiModelOperationCoordinator()
+        val lockStarted = CompletableDeferred<Unit>()
+        val releaseLock = CompletableDeferred<Unit>()
+        val blocker = launch {
+            coordinator.withModel(1L, "external-1") {
+                lockStarted.complete(Unit)
+                releaseLock.await()
+            }
+        }
+        runCurrent()
+        lockStarted.await()
+
+        val job = AiSettingsViewModel(repository, secrets, FakeAiCompletionClient(), clock, coordinator)
+            .saveModel(draft(name = "等待锁"), "sk-lock")
+        runCurrent()
+        assertEquals(1, repository.models.value.size)
+
+        job.cancel(CancellationException("cancel while locked"))
+        releaseLock.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(repository.models.value.isEmpty())
+        assertNull(secrets.get("external-1"))
+        blocker.join()
+    }
+
+    @Test
+    fun cancellingNewSaveWhileWaitingForInsertedModelCompensatesWithoutRecoverableRow() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository().apply {
+            observeModelGate = CompletableDeferred()
+        }
+        val secrets = FakeAiSecretStore()
+        val viewModel = AiSettingsViewModel(
+            repository, secrets, FakeAiCompletionClient(), clock, AiModelOperationCoordinator(),
+        )
+        val job = viewModel.saveModel(draft(name = "等待模型"), "sk-observe")
+        runCurrent()
+        repository.observeModelStarted.await()
+        assertEquals(1, repository.models.value.size)
+
+        job.cancel(CancellationException("cancel while observing"))
+        advanceUntilIdle()
+
+        assertTrue(repository.models.value.isEmpty())
+        assertNull(viewModel.state.value.recoverableModelId)
+        assertNull(secrets.get("external-1"))
+    }
+
+    @Test
     fun deleteDatabaseFailureKeepsKeyAndDoubleConfirmDeletesOnlyOnce() = runTest(dispatcher) {
         val repository = FakeAiModelRepository()
         val secrets = FakeAiSecretStore()
@@ -477,10 +604,16 @@ private class FakeAiModelRepository : AiModelRepository {
     var failDelete = false
     var saveCalls = 0
     var deleteCalls = 0
+    var observeModelGate: CompletableDeferred<Unit>? = null
+    val observeModelStarted = CompletableDeferred<Unit>()
 
     override fun observeModels(): Flow<List<AiModelConfig>> = models
     override fun observeBindings(): Flow<List<AiFeatureBinding>> = bindings
-    override fun observeModel(id: Long): Flow<AiModelConfig?> = MutableStateFlow(models.value.find { it.id == id })
+    override fun observeModel(id: Long): Flow<AiModelConfig?> = flow {
+        observeModelStarted.complete(Unit)
+        observeModelGate?.await()
+        emit(models.value.find { it.id == id })
+    }
 
     override suspend fun saveModel(id: Long?, draft: AiModelConfigDraft): Long {
         saveCalls++
@@ -534,6 +667,51 @@ private class FakeAiSecretStore : AiSecretStore {
         if (failPut) error("storage failed")
         onPut?.invoke(externalId)
         values[externalId] = apiKey
+    }
+    override suspend fun get(externalId: String): String? = values[externalId]
+    override suspend fun maskedSuffix(externalId: String): String? = values[externalId]?.takeLast(4)
+    override suspend fun remove(externalId: String) { values.remove(externalId) }
+    override suspend fun clearAll() { values.clear() }
+}
+
+private class SlowFirstSuffixSecretStore : AiSecretStore {
+    private val values = mutableMapOf<String, String>()
+    private var suffixReads = 0
+    val firstReadStarted = CompletableDeferred<Unit>()
+    val firstReadCancelled = CompletableDeferred<Unit>()
+    val releaseFirstRead = CompletableDeferred<Unit>()
+
+    override suspend fun put(externalId: String, apiKey: String) { values[externalId] = apiKey }
+    override suspend fun get(externalId: String): String? = values[externalId]
+    override suspend fun maskedSuffix(externalId: String): String? {
+        if (suffixReads++ == 0) {
+            firstReadStarted.complete(Unit)
+            try {
+                releaseFirstRead.await()
+                return null
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                firstReadCancelled.complete(Unit)
+                throw cancelled
+            }
+        }
+        return values[externalId]?.takeLast(4)
+    }
+    override suspend fun remove(externalId: String) { values.remove(externalId) }
+    override suspend fun clearAll() { values.clear() }
+}
+
+private class SuspendedPutSecretStore(
+    private val commitBeforeSuspend: Boolean = false,
+) : AiSecretStore {
+    private val values = mutableMapOf<String, String>()
+    val putStarted = CompletableDeferred<Unit>()
+    val releasePut = CompletableDeferred<Unit>()
+
+    override suspend fun put(externalId: String, apiKey: String) {
+        putStarted.complete(Unit)
+        if (commitBeforeSuspend) values[externalId] = apiKey
+        releasePut.await()
+        if (!commitBeforeSuspend) values[externalId] = apiKey
     }
     override suspend fun get(externalId: String): String? = values[externalId]
     override suspend fun maskedSuffix(externalId: String): String? = values[externalId]?.takeLast(4)

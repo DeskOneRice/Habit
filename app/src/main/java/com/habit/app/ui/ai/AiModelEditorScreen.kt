@@ -1,5 +1,6 @@
 package com.habit.app.ui.ai
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -79,6 +80,7 @@ fun AiModelEditorScreen(
             viewModel.consumeMessage()
         }
     }
+    BackHandler(enabled = state.saving) { }
 
     fun save() {
         viewModel.saveModel(
@@ -102,7 +104,7 @@ fun AiModelEditorScreen(
             HabitTopAppBar(
                 title = if (modelId == null) "添加模型" else "编辑模型",
                 navigationMode = NavigationMode.BACK,
-                onNavigation = onBack,
+                onNavigation = { if (!state.saving) onBack() },
                 actions = {
                     HabitTopAction(
                         text = if (state.saving) "保存中…" else "保存",

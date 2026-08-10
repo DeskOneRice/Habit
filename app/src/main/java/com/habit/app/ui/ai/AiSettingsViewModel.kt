@@ -18,13 +18,17 @@ import java.time.Clock
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class AiSettingsTab { MODELS, BINDINGS }
 
@@ -67,7 +71,17 @@ class AiSettingsViewModel internal constructor(
     private val clock: Clock = Clock.systemUTC(),
     private val coordinator: AiModelOperationCoordinator = AiModelOperationCoordinator(),
 ) : ViewModel() {
-    private val keySuffixes = MutableStateFlow<Map<Long, String?>>(emptyMap())
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val keySuffixes = combine(
+        repository.observeModels(),
+        coordinator.keyRevision,
+    ) { models, _ -> models }
+        .mapLatest { models ->
+            models.associate { model ->
+                model.id to runCatching { secretStore.maskedSuffix(model.externalId) }.getOrNull()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     private val activeTab = MutableStateFlow(AiSettingsTab.MODELS)
     private val busyTextTestIds = MutableStateFlow<Set<Long>>(emptySet())
     private val busyVisionTestIds = MutableStateFlow<Set<Long>>(emptySet())
@@ -127,16 +141,6 @@ class AiSettingsViewModel internal constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AiSettingsUiState())
 
-    init {
-        viewModelScope.launch {
-            repository.observeModels().collect { models ->
-                keySuffixes.value = models.associate { model ->
-                    model.id to runCatching { secretStore.maskedSuffix(model.externalId) }.getOrNull()
-                }
-            }
-        }
-    }
-
     fun selectTab(tab: AiSettingsTab) { activeTab.value = tab }
     fun consumeMessage() { message.value = null }
     fun requestHttpConsent() { httpConsentRequested.value = true }
@@ -191,37 +195,70 @@ class AiSettingsViewModel internal constructor(
 
     private suspend fun saveNewModel(draft: AiModelConfigDraft, apiKey: String): SaveResult =
         coordinator.withCreate {
-            val savedId = repository.saveModel(null, draft)
-            val saved = repository.observeModel(savedId).first()
-                ?: return@withCreate SaveResult.Failed
-            val modelMutex = coordinator.register(saved.id, saved.externalId)
-            modelMutex.lock()
+            var createdId: Long? = null
+            var externalId: String? = null
             try {
-                if (apiKey.isNotBlank()) secretStore.put(saved.externalId, apiKey.trim())
-                refreshKeySuffix(saved.id, saved.externalId)
+                createdId = repository.saveModel(null, draft)
+                val saved = repository.observeModel(createdId).first()
+                    ?: return@withCreate compensateNewSaveFailure(createdId, externalId)
+                externalId = saved.externalId
+                val modelMutex = coordinator.register(saved.id, saved.externalId)
+                modelMutex.lock()
+                try {
+                    if (apiKey.isNotBlank()) {
+                        secretStore.put(saved.externalId, apiKey.trim())
+                        coordinator.invalidateKeys()
+                    }
+                } finally {
+                    modelMutex.unlock()
+                }
                 SaveResult.Saved(saved.id)
             } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) { rollbackCreatedModel(createdId, externalId) }
                 throw cancelled
             } catch (_: Exception) {
-                try {
-                    repository.deleteModel(saved.id)
-                    keySuffixes.value = keySuffixes.value - saved.id
-                    SaveResult.Failed
-                } catch (_: Exception) {
-                    runCatching {
-                        repository.recordTest(
-                            saved.id,
-                            AiTestStatus.NEEDS_KEY,
-                            encodeTestSnapshot(TestSnapshot(message = "需要重新填写 Key")),
-                            null,
-                        )
-                    }
-                    SaveResult.Recoverable(saved.id)
-                }
-            } finally {
-                modelMutex.unlock()
+                compensateNewSaveFailure(createdId, externalId)
             }
         }
+
+    private suspend fun compensateNewSaveFailure(
+        createdId: Long?,
+        externalId: String?,
+    ): SaveResult = withContext(NonCancellable) {
+        if (rollbackCreatedModel(createdId, externalId)) {
+            SaveResult.Failed
+        } else {
+            SaveResult.Recoverable(requireNotNull(createdId))
+        }
+    }
+
+    private suspend fun rollbackCreatedModel(createdId: Long?, externalId: String?): Boolean {
+        if (createdId == null) return true
+        return try {
+            repository.deleteModel(createdId)
+            if (externalId != null) {
+                try {
+                    secretStore.remove(externalId)
+                } catch (_: Exception) {
+                    // The Room row is already gone; any encrypted orphan is intentionally unreachable.
+                } finally {
+                    coordinator.invalidateKeys()
+                }
+            }
+            true
+        } catch (_: Exception) {
+            runCatching {
+                repository.recordTest(
+                    createdId,
+                    AiTestStatus.NEEDS_KEY,
+                    encodeTestSnapshot(TestSnapshot(message = "需要重新填写 Key")),
+                    null,
+                )
+            }
+            runCatching { clearAllBindingsForModelLocked(createdId) }
+            false
+        }
+    }
 
     private suspend fun saveExistingModel(
         modelId: Long,
@@ -247,8 +284,10 @@ class AiSettingsViewModel internal constructor(
             if (mustResetTests) resetTestsLocked(existing.id)
             if (mustUnbindAll) clearAllBindingsForModelLocked(existing.id)
             val savedId = repository.saveModel(existing.id, draft)
-            if (apiKey.isNotBlank()) secretStore.put(existing.externalId, apiKey.trim())
-            refreshKeySuffix(savedId, existing.externalId)
+            if (apiKey.isNotBlank()) {
+                secretStore.put(existing.externalId, apiKey.trim())
+                coordinator.invalidateKeys()
+            }
             SaveResult.Saved(savedId)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -375,12 +414,13 @@ class AiSettingsViewModel internal constructor(
                     message.value = "删除失败，请重试"
                     return@withModel
                 }
-                keySuffixes.value = keySuffixes.value - current.id
                 deleteImpact.value = null
                 try {
                     secretStore.remove(current.externalId)
+                    coordinator.invalidateKeys()
                     message.value = "模型配置已删除，相关功能绑定已清空"
                 } catch (_: Exception) {
+                    coordinator.invalidateKeys()
                     message.value = DELETE_KEY_CLEANUP_WARNING
                 }
             }
@@ -438,11 +478,6 @@ class AiSettingsViewModel internal constructor(
             AiFeature.WEEKLY_REPORT -> model.supportsText && snapshot.text == AiTestStatus.PASSED
             AiFeature.MEAL_CALORIE_ESTIMATE -> model.supportsVision && snapshot.vision == AiTestStatus.PASSED
         }
-    }
-
-    private suspend fun refreshKeySuffix(id: Long, externalId: String) {
-        val suffix = runCatching { secretStore.maskedSuffix(externalId) }.getOrNull()
-        keySuffixes.value = keySuffixes.value + (id to suffix)
     }
 
     private fun validateDraft(draft: AiModelConfigDraft): AiModelConfigDraft {

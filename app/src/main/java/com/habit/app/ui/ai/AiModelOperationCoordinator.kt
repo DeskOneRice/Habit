@@ -1,5 +1,9 @@
 package com.habit.app.ui.ai
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -10,6 +14,9 @@ internal class AiModelOperationCoordinator {
     private val externalLocks = mutableMapOf<String, Mutex>()
     private val createLock = Mutex()
     private val bindingLock = Mutex()
+    private val mutableKeyRevision = MutableStateFlow(0L)
+
+    val keyRevision: StateFlow<Long> = mutableKeyRevision.asStateFlow()
 
     suspend fun <T> withCreate(block: suspend () -> T): T = createLock.withLock { block() }
 
@@ -23,6 +30,8 @@ internal class AiModelOperationCoordinator {
         mutexFor(modelId = null, externalId = externalId).withLock { block() }
 
     suspend fun <T> withBindings(block: suspend () -> T): T = bindingLock.withLock { block() }
+
+    fun invalidateKeys() { mutableKeyRevision.update { it + 1L } }
 
     fun register(modelId: Long, externalId: String): Mutex = mutexFor(modelId, externalId)
 

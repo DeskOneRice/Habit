@@ -47,6 +47,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -85,6 +87,67 @@ class AiSettingsFlowTest {
         composeRule.onNodeWithText("图片模型").assertIsDisplayed()
         composeRule.onNodeWithText("Key：••••1234").assertIsDisplayed()
         composeRule.onNodeWithText("Key：••••5678").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun separateEditorViewModelRefreshesSettingsViewModelMaskedSuffix() {
+        val repository = FlowAiRepository(emptyList(), emptyList())
+        val secrets = FlowAiSecrets(suspendPuts = true)
+        val coordinator = AiModelOperationCoordinator()
+        val clock = Clock.fixed(Instant.parse("2026-08-10T04:05:06Z"), ZoneOffset.UTC)
+        val settings = AiSettingsViewModel(repository, secrets, FlowAiClient(), clock, coordinator)
+        val editor = AiSettingsViewModel(repository, secrets, FlowAiClient(), clock, coordinator)
+        val saved = mutableIntStateOf(0)
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                if (saved.intValue == 0) {
+                    AiModelEditorScreen(editor, null, {}, { saved.intValue++ })
+                } else {
+                    AiSettingsScreen(settings, {}, {}, {})
+                }
+            }
+        }
+
+        fillEditor("跨页模型", "gpt-shared", "sk-shared-4321")
+        composeRule.onNodeWithTag("ai_model_save").performClick()
+        composeRule.waitUntil(5_000) { secrets.putStarted.isCompleted }
+        composeRule.runOnIdle {
+            assertNull(settings.state.value.models.single().keySuffix)
+            secrets.releasePut.complete(Unit)
+        }
+        composeRule.waitUntil(5_000) { saved.intValue == 1 }
+
+        composeRule.onNodeWithText("Key：••••4321").assertIsDisplayed()
+    }
+
+    @Test
+    fun savingEditorIgnoresTopBackUntilSecretWriteCompletes() {
+        val repository = FlowAiRepository(emptyList(), emptyList())
+        val secrets = FlowAiSecrets(suspendPuts = true)
+        val viewModel = AiSettingsViewModel(
+            repository,
+            secrets,
+            FlowAiClient(),
+            Clock.fixed(Instant.parse("2026-08-10T04:05:06Z"), ZoneOffset.UTC),
+            AiModelOperationCoordinator(),
+        )
+        val backCalls = mutableIntStateOf(0)
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiModelEditorScreen(viewModel, null, { backCalls.intValue++ }, {})
+            }
+        }
+
+        fillEditor("保存中模型", "gpt-saving", "sk-saving")
+        composeRule.onNodeWithTag("ai_model_save").performClick()
+        composeRule.waitUntil(5_000) { secrets.putStarted.isCompleted && viewModel.state.value.saving }
+        composeRule.onNodeWithTag("navigate_back").performClick()
+        composeRule.runOnIdle { assertEquals(0, backCalls.intValue) }
+
+        composeRule.runOnIdle { secrets.releasePut.complete(Unit) }
+        composeRule.waitUntil(5_000) { !viewModel.state.value.saving }
+        composeRule.onNodeWithTag("navigate_back").performClick()
+        composeRule.runOnIdle { assertEquals(1, backCalls.intValue) }
     }
 
     @Test
@@ -354,9 +417,17 @@ private class FlowAiRepository(
     }
 }
 
-private class FlowAiSecrets : AiSecretStore {
+private class FlowAiSecrets(
+    private val suspendPuts: Boolean = false,
+) : AiSecretStore {
     private val values = mutableMapOf<String, String>()
-    override suspend fun put(externalId: String, apiKey: String) { values[externalId] = apiKey }
+    val putStarted = CompletableDeferred<Unit>()
+    val releasePut = CompletableDeferred<Unit>()
+    override suspend fun put(externalId: String, apiKey: String) {
+        putStarted.complete(Unit)
+        if (suspendPuts) releasePut.await()
+        values[externalId] = apiKey
+    }
     override suspend fun get(externalId: String): String? = values[externalId]
     override suspend fun maskedSuffix(externalId: String): String? = values[externalId]?.takeLast(4)
     override suspend fun remove(externalId: String) { values.remove(externalId) }
