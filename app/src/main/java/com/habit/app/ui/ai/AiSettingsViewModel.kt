@@ -273,6 +273,15 @@ class AiSettingsViewModel internal constructor(
         } catch (_: Exception) {
             return@withModel SaveResult.Failed
         }
+        val configurationUnchanged = existing.name == draft.name &&
+            existing.baseUrl == draft.baseUrl &&
+            existing.modelId == draft.modelId &&
+            existing.supportsText == draft.supportsText &&
+            existing.supportsVision == draft.supportsVision &&
+            existing.allowInsecureHttp == draft.allowInsecureHttp &&
+            existing.enabled == draft.enabled &&
+            apiKey.isBlank()
+        if (configurationUnchanged) return@withModel SaveResult.Saved(existing.id)
         val testInputsChanged = existing.baseUrl != draft.baseUrl ||
             existing.modelId != draft.modelId ||
             existing.supportsText != draft.supportsText ||
@@ -541,7 +550,7 @@ private fun String?.toTestStatus(): AiTestStatus = runCatching {
 
 private fun ineligibleMessage(feature: AiFeature): String = when (feature) {
     AiFeature.WEEKLY_REPORT -> "该模型未通过文本能力测试"
-    AiFeature.MEAL_CALORIE_ESTIMATE -> "该模型未通过图片能力测试"
+    AiFeature.MEAL_CALORIE_ESTIMATE -> "该模型未通过饮食图片能力测试"
 }
 
 private fun neutralTestImage(): AiPreparedImage = AiPreparedImage(

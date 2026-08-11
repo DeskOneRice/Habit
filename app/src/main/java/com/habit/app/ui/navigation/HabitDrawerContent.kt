@@ -67,8 +67,8 @@ fun HabitDrawerContent(
         Spacer(Modifier.height(20.dp))
         HorizontalDivider()
         Spacer(Modifier.height(12.dp))
-        DrawerItem(DrawerDestination(HabitDestination.Workbench, "今日工作台", "🏠"), selectedRoute, onDestination)
-        DrawerGroupHeader("习惯", "🌱", habitExpanded, onToggleHabit)
+        DrawerItem(DrawerDestination(HabitDestination.Workbench, "今日工作台", "🧭"), selectedRoute, onDestination)
+        DrawerGroupHeader("习惯", "✅", habitExpanded, onToggleHabit)
         if (habitExpanded) habitDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }
@@ -76,7 +76,7 @@ fun HabitDrawerContent(
         if (dietExpanded) dietDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }
-        DrawerGroupHeader("AI 洞察", "✨", aiExpanded, onToggleAi)
+        DrawerGroupHeader("AI 洞察", "💡", aiExpanded, onToggleAi)
         if (aiExpanded) aiDestinations.forEach { item ->
             DrawerItem(item, selectedRoute, onDestination, Modifier.padding(start = 12.dp))
         }

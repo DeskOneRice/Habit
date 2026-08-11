@@ -58,7 +58,6 @@ internal fun AiCalorieEstimateAction(
     onEstimate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (recordType != DietRecordType.MEAL) return
     val hasUsablePhotos = photoCount in 1..3
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -75,7 +74,7 @@ internal fun AiCalorieEstimateAction(
             Text(if (isBusy) "正在估算…" else "AI 估算热量")
         }
         Text(
-            text = if (hasUsablePhotos) "已选择 $photoCount 张照片" else "请先添加 1–3 张餐食照片",
+            text = if (hasUsablePhotos) "已选择 $photoCount 张照片，将同时发送记录信息" else "请先添加 1–3 张饮食照片",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -160,7 +159,7 @@ internal fun AiCalorieEstimateSheet(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         CircularProgressIndicator(modifier = Modifier.height(28.dp))
-                        Text("正在识别这餐…", style = MaterialTheme.typography.titleMedium)
+                    Text("正在识别这条饮食记录…", style = MaterialTheme.typography.titleMedium)
                     }
                 }
 
@@ -203,7 +202,7 @@ internal fun AiCalorieEstimateSheet(
                 )
             }
             Text(
-                "照片仅用于本次识别，不会展示密钥、模型标识或原始响应",
+                "记录信息与照片仅用于本次识别，不会展示密钥、模型标识或原始响应",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -255,7 +254,7 @@ private fun AiEstimateSelectablePhoto(
             DietSampledBitmapState.Failed -> Text("照片")
             is DietSampledBitmapState.Ready -> Image(
                 bitmap = bitmapState.bitmap.asImageBitmap(),
-                contentDescription = "待估算餐食照片",
+                contentDescription = "待估算饮食照片",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().height(82.dp).clip(RoundedCornerShape(13.dp)),
             )

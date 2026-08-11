@@ -46,6 +46,7 @@ fun HabitDatePickerDialog(
     selectedDate: LocalDate,
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
+    title: String = "选择开始日期",
 ) {
     var visibleMonth by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
     var draftDate by remember(selectedDate) { mutableStateOf(selectedDate) }
@@ -64,7 +65,7 @@ fun HabitDatePickerDialog(
                 modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("选择开始日期", style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.titleLarge)
                 Text(
                     "${draftDate.year}年${draftDate.monthValue}月${draftDate.dayOfMonth}日",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

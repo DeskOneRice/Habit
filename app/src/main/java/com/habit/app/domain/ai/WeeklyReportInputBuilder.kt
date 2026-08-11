@@ -135,8 +135,11 @@ private data class HabitAccumulator(
 )
 
 private fun WeeklyReportInput.toSafeJson(): String = buildJsonObject {
-    put("startEpochDay", startEpochDay)
-    put("endEpochDay", endEpochDay)
+    val startDate = LocalDate.ofEpochDay(startEpochDay)
+    val endDate = LocalDate.ofEpochDay(endEpochDay)
+    put("periodStartDate", startDate.toString())
+    put("periodEndDate", endDate.toString())
+    put("periodLabel", "${startDate.year}年${startDate.monthValue}月${startDate.dayOfMonth}日至${endDate.monthValue}月${endDate.dayOfMonth}日")
     put("habits", buildJsonArray {
         habits.forEach { habit ->
             add(buildJsonObject {
@@ -154,7 +157,7 @@ private fun WeeklyReportInput.toSafeJson(): String = buildJsonObject {
                 put("name", record.name)
                 put("type", record.type)
                 put("subtype", record.subtype)
-                put("epochDay", record.epochDay)
+                put("date", LocalDate.ofEpochDay(record.epochDay).toString())
                 put("beijingHour", record.beijingHour)
                 put("knownCalories", record.finalCalories?.let(::JsonPrimitive) ?: JsonNull)
                 put("calorieMissing", record.finalCalories == null)

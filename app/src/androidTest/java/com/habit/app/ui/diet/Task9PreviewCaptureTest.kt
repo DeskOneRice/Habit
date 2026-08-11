@@ -89,7 +89,7 @@ class Task9PreviewCaptureTest {
         composeRule.onNodeWithTag("ai_estimate_photo_beef-rice.png").assertIsDisplayed()
         composeRule.onNodeWithTag("ai_estimate_photo_vegetables.png").assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithContentDescription("待估算餐食照片")
+            composeRule.onAllNodesWithContentDescription("待估算饮食照片")
                 .fetchSemanticsNodes().size == 2
         }
         composeRule.onNodeWithTag("ai_estimate_confirm_photos").assertIsDisplayed()

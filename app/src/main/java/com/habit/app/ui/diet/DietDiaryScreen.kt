@@ -24,6 +24,8 @@ import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitAddFab
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.components.HabitPagerTab
+import com.habit.app.ui.components.HabitPagerTabStrip
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -146,33 +148,15 @@ fun DietDiaryScreen(
 
 @Composable
 private fun DiaryModeSelector(mode: DietDiaryMode, onSelected: (DietDiaryMode) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(56.dp)) {
-        listOf(DietDiaryMode.RECENT to "最近记录", DietDiaryMode.DAY to "按日查看").forEach { (value, title) ->
-            val selected = mode == value
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onSelected(value) }
-                    .testTag(if (value == DietDiaryMode.RECENT) "diet_mode_recent" else "diet_mode_day"),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(if (selected) 3.dp else 1.dp)
-                        .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                )
-            }
-        }
-    }
+    val modes = listOf(DietDiaryMode.RECENT, DietDiaryMode.DAY)
+    HabitPagerTabStrip(
+        tabs = listOf(
+            HabitPagerTab("最近记录", "diet_mode_recent"),
+            HabitPagerTab("按日查看", "diet_mode_day"),
+        ),
+        selectedIndex = modes.indexOf(mode).coerceAtLeast(0),
+        onSelected = { onSelected(modes[it]) },
+    )
 }
 
 @Composable
@@ -249,17 +233,24 @@ private fun MealRecordCard(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             DietRecordThumbnail(record, photoStore, onPhotoClick = onPhotoPreview)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(record.displayTitle(), style = MaterialTheme.typography.titleMedium)
-                Text(record.displayType(categoryName), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    "${record.displayTime()} · ${record.finalCalories?.let { "$it kcal" } ?: "未记录热量"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { onRepeat(record.id) }) { Text("再记一次") }
-                    TextButton(onClick = { onOpen(record.id) }) { Text("查看") }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 112.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(record.displayTitle(), style = MaterialTheme.typography.titleMedium)
+                    Text(record.displayType(categoryName), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "${record.displayTime()} · ${record.finalCalories?.let { "$it kcal" } ?: "未记录热量"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = { onRepeat(record.id) }) { Text("再记一次") }
+                        TextButton(onClick = { onOpen(record.id) }) { Text("查看") }
+                    }
                 }
             }
         }

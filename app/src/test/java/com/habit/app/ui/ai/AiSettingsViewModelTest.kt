@@ -153,7 +153,7 @@ class AiSettingsViewModelTest {
         viewModel.bind(AiFeature.MEAL_CALORIE_ESTIMATE, textOnly.id)
         advanceUntilIdle()
         assertTrue(repository.bindings.value.isEmpty())
-        assertEquals("该模型未通过图片能力测试", viewModel.state.value.message)
+        assertEquals("该模型未通过饮食图片能力测试", viewModel.state.value.message)
 
         viewModel.testVision(vision.id)
         advanceUntilIdle()
@@ -356,6 +356,35 @@ class AiSettingsViewModelTest {
         assertEquals(AiTestStatus.UNTESTED, final.textStatus)
         assertEquals(AiTestStatus.UNTESTED, final.visionStatus)
         assertTrue(repository.bindings.value.all { it.modelConfigId == null })
+    }
+
+    @Test
+    fun unchangedConfigurationDoesNotSaveOrInvalidateExistingTestsAndBindings() = runTest(dispatcher) {
+        val repository = FakeAiModelRepository()
+        val secrets = FakeAiSecretStore()
+        val viewModel = AiSettingsViewModel(
+            repository,
+            secrets,
+            FakeAiCompletionClient(),
+            clock,
+            AiModelOperationCoordinator(),
+        )
+        val unchangedDraft = draft(name = "视觉模型", vision = true)
+        viewModel.saveModel(unchangedDraft, "sk-unchanged")
+        advanceUntilIdle()
+        val id = repository.models.value.single().id
+        viewModel.testVision(id)
+        advanceUntilIdle()
+        viewModel.bind(AiFeature.MEAL_CALORIE_ESTIMATE, id)
+        advanceUntilIdle()
+        val savesBefore = repository.saveCalls
+
+        viewModel.saveModel(id, unchangedDraft, "")
+        advanceUntilIdle()
+
+        assertEquals(savesBefore, repository.saveCalls)
+        assertEquals(AiTestStatus.PASSED, viewModel.state.value.models.single().visionStatus)
+        assertEquals(id, repository.bindings.value.first { it.feature == AiFeature.MEAL_CALORIE_ESTIMATE }.modelConfigId)
     }
 
     @Test

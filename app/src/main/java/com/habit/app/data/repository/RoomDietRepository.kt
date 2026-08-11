@@ -43,7 +43,7 @@ class RoomDietRepository(
         val calculated = calculateCalories(normalized.foodItems, normalized.manualFinalCalories)
         val existing = id?.let { requireNotNull(dao.getRecordEntity(it)) { "饮食记录不存在" } }
         val existingEstimate = existing?.let { dao.getCalorieEstimate(it.id) }
-        val attachedEstimate = normalized.aiCalorieEstimate?.takeIf { normalized.recordType == DietRecordType.MEAL }
+        val attachedEstimate = normalized.aiCalorieEstimate
         val reconciledAttachedEstimate = attachedEstimate?.let { estimate ->
             val finalCalories = requireNotNull(calculated.finalCalories) { "AI evidence requires final calories" }
             estimate.copy(
@@ -52,7 +52,7 @@ class RoomDietRepository(
             )
         }
         val reconciledRetainedEstimate = existingEstimate
-            ?.takeIf { reconciledAttachedEstimate == null && normalized.recordType == DietRecordType.MEAL }
+            ?.takeIf { reconciledAttachedEstimate == null }
             ?.let { estimate ->
                 val finalCalories = requireNotNull(calculated.finalCalories) { "AI evidence requires final calories" }
                 estimate.copy(
@@ -184,7 +184,7 @@ class RoomDietRepository(
             beverage = drink,
             note = draft.note.trim(),
             dietCategoryId = draft.dietCategoryId.takeIf { it > 0 } ?: defaultDietCategoryId(draft),
-            aiCalorieEstimate = draft.aiCalorieEstimate?.takeIf { draft.recordType == DietRecordType.MEAL },
+            aiCalorieEstimate = draft.aiCalorieEstimate,
         )
     }
 

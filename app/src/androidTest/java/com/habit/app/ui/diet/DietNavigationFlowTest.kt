@@ -66,8 +66,9 @@ class DietNavigationFlowTest {
 
         composeRule.onNodeWithTag("diet_detail_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("diet_save").assertDoesNotExist()
-        composeRule.onNodeWithTag("diet_detail_edit").performClick()
-        composeRule.onNodeWithTag("diet_save").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("diet_detail_edit", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("diet_save_top").assertIsDisplayed()
+        composeRule.onNodeWithTag("diet_delete_bottom").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -102,7 +103,7 @@ class DietNavigationFlowTest {
         robot.navigateTo("饮食日记")
         robot.waitForTag("diet_record_$recordId")
         composeRule.onNodeWithTag("diet_record_$recordId").performClick()
-        composeRule.onNodeWithTag("diet_detail_edit").performClick()
+        composeRule.onNodeWithTag("diet_detail_edit", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag("ai_calorie_estimate").performScrollTo().performClick()
         robot.waitForText("发送前确认")
         composeRule.onNodeWithTag("ai_estimate_photo_$relativePath").performClick()

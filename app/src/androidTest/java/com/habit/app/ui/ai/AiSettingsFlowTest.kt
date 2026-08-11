@@ -272,7 +272,7 @@ class AiSettingsFlowTest {
 
         composeRule.onNodeWithContentDescription("删除 共享模型").performClick()
         composeRule.onNodeWithText("删除模型配置？").assertIsDisplayed()
-        composeRule.onNodeWithText("综合周报、图片热量估算将取消绑定", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("综合周报、饮食热量估算将取消绑定", substring = true).assertIsDisplayed()
     }
 
     @Test

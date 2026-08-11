@@ -1,4 +1,4 @@
-# Habit 0.6.0 发布测试
+# Habit 0.6.1 发布测试
 
 结果日期：2026-08-11
 
@@ -11,6 +11,9 @@
 - 目标设备：`Small_Phone_API_35`，serial `emulator-5554`，Android 15 / API 35
 
 ## 最终自动化结果
+
+- 0.6.1 修订：JVM 46 个测试套件、232 项测试全部通过；应用、单元测试与 Android 测试 Kotlin 编译均成功。
+- 本轮关键设备集合共 35 项，首次仅有 3 项旧文案/语义树断言失败；同步断言后定向复跑 3/3 通过。其余 32 项已在同一轮完成，其中包含 Room 饮品 AI 热量依据、日期选择器、饮食浏览、模型配置与导航。
 
 - 版本/文档 smoke：5 项通过，0 失败、0 错误、0 跳过；测试先在 0.5.1/11 和旧文档上取得 2 项预期失败，再更新到 0.6.0/12。
 - JVM：45 个测试套件、227 项测试全部通过，0 失败、0 错误、0 跳过。
@@ -61,4 +64,4 @@
 
 ## 发布 APK 验证
 
-从干净已提交源码构建 release，将输出复制为 `artifacts\Habit-0.6.0-release.apk`。用 SDK `aapt2` 与 `apksigner` 验证：包名 `com.habit.app`、versionCode 12、versionName 0.6.0、minSdk 23、targetSdk 36、v1/v2 签名为 true，且证书 SHA-256 与 0.5.1 完全相同。复制前后的 SHA-256 必须一致，并记录最终 APK 字节数、完整 SHA-256、设备 serial、覆盖安装/数据保留及冷启动证据。
+从干净已提交源码构建 release，将输出复制为 `artifacts\Habit-0.6.1-release.apk`。用 SDK `aapt2` 与 `apksigner` 验证：包名 `com.habit.app`、versionCode 13、versionName 0.6.1、minSdk 23、targetSdk 36、v1/v2 签名为 true，且证书 SHA-256 与 0.5.1/0.6.0 完全相同。复制前后的 SHA-256 必须一致，并记录最终 APK 字节数、完整 SHA-256、设备 serial、覆盖安装/数据保留及冷启动证据。

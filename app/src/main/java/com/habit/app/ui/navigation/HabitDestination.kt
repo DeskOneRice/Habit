@@ -53,24 +53,24 @@ data class DrawerDestination(
 
 val habitDestinations = listOf(
     DrawerDestination(HabitDestination.Calendar, "习惯日历", "📅"),
-    DrawerDestination(HabitDestination.Habits, "我的习惯", "✅"),
+    DrawerDestination(HabitDestination.Habits, "我的习惯", "🌱"),
     DrawerDestination(HabitDestination.DrawerCategories, "分类管理", "🗂️"),
 )
 
 val dietDestinations = listOf(
-    DrawerDestination(HabitDestination.DietDiary, "饮食日记", "🍽️"),
-    DrawerDestination(HabitDestination.DietTemplates, "饮食模板", "📋"),
-    DrawerDestination(HabitDestination.DietStats, "饮食统计", "📊"),
+    DrawerDestination(HabitDestination.DietDiary, "饮食日记", "🥗"),
+    DrawerDestination(HabitDestination.DietTemplates, "饮食模板", "🧾"),
+    DrawerDestination(HabitDestination.DietStats, "饮食统计", "📈"),
     DrawerDestination(HabitDestination.DietSettings, "饮食设置", "⚙️"),
 )
 
 val aiDestinations = listOf(
-    DrawerDestination(HabitDestination.AiReports, "综合周报", "📝"),
-    DrawerDestination(HabitDestination.AiSettings, "模型配置", "🤖"),
+    DrawerDestination(HabitDestination.AiReports, "综合周报", "📑"),
+    DrawerDestination(HabitDestination.AiSettings, "模型配置", "🧩"),
 )
 
 val topLevelDestinations = listOf(
-    DrawerDestination(HabitDestination.Workbench, "今日工作台", "🏠"),
+    DrawerDestination(HabitDestination.Workbench, "今日工作台", "🧭"),
 ) + habitDestinations + dietDestinations + aiDestinations + DrawerDestination(HabitDestination.Settings, "主题与设置", "🎨")
 
 val drawerTopLevelRoutes = topLevelDestinations.map { it.destination.route }.toSet()

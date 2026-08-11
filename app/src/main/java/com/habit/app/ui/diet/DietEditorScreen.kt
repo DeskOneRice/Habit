@@ -30,9 +30,8 @@ import com.habit.app.ui.components.CategoryChipItem
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.HabitTopAction
 import com.habit.app.ui.components.NavigationMode
-import java.time.Instant
+import com.habit.app.ui.components.HabitDatePickerDialog
 import java.time.LocalTime
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.io.File
 
@@ -70,10 +69,11 @@ fun DietEditorScreen(
             HabitTopAppBar(if (isEditing) "编辑饮食" else "记一餐", NavigationMode.BACK, { viewModel.cancel(onBack) }) {
                 if (isEditing) {
                     HabitTopAction(
-                        text = "删除",
-                        contentDescription = "删除饮食记录",
-                        onClick = { showDelete = true },
-                        contentColor = MaterialTheme.colorScheme.error,
+                        text = if (state.isSaving) "保存中…" else "保存",
+                        contentDescription = "保存饮食记录",
+                        onClick = { viewModel.save(onSaved) },
+                        modifier = Modifier.testTag("diet_save_top"),
+                        enabled = !state.isSaving,
                     )
                 }
             }
@@ -164,11 +164,19 @@ fun DietEditorScreen(
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text("存为模板") }
-            Button(
-                onClick = { viewModel.save(onSaved) },
-                enabled = !state.isSaving,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("diet_save"),
-            ) { Text(if (state.isSaving) "正在保存…" else "保存") }
+            if (isEditing) {
+                OutlinedButton(
+                    onClick = { showDelete = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("diet_delete_bottom"),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("删除这条记录") }
+            } else {
+                Button(
+                    onClick = { viewModel.save(onSaved) },
+                    enabled = !state.isSaving,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("diet_save"),
+                ) { Text(if (state.isSaving) "正在保存…" else "保存") }
+            }
             Spacer(Modifier.height(28.dp))
         }
     }
@@ -180,22 +188,15 @@ fun DietEditorScreen(
         dismissButton = { TextButton(onClick = { showDelete = false }) { Text("取消") } },
     )
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { millis ->
-                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        viewModel.update { withDate(selected) }
-                    }
-                    showDatePicker = false
-                }) { Text("确定") }
+        HabitDatePickerDialog(
+            selectedDate = state.date,
+            onConfirm = { selected ->
+                viewModel.update { withDate(selected) }
+                showDatePicker = false
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("取消") } },
-        ) { DatePicker(state = pickerState) }
+            onDismiss = { showDatePicker = false },
+            title = "选择发生日期",
+        )
     }
     if (showTimePicker) {
         val pickerState = rememberTimePickerState(

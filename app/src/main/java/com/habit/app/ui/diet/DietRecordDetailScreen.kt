@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,10 +76,18 @@ fun DietRecordDetailScreen(
     onRepeat: (Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         topBar = {
             HabitTopAppBar("饮食详情", NavigationMode.BACK, onBack) {
                 state.record?.let { record ->
+                    HabitTopAction(
+                        text = "删除",
+                        contentDescription = "删除饮食记录",
+                        onClick = { showDeleteConfirmation = true },
+                        modifier = Modifier.testTag("diet_detail_delete"),
+                        contentColor = MaterialTheme.colorScheme.error,
+                    )
                     HabitTopAction(
                         text = "编辑",
                         contentDescription = "编辑饮食记录",
@@ -118,6 +128,24 @@ fun DietRecordDetailScreen(
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("删除这条记录？") },
+            text = { Text("删除后无法恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        viewModel.delete(onBack)
+                    },
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) { Text("取消") }
+            },
+        )
     }
 }
 

@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,6 +46,8 @@ import com.habit.app.ui.components.HabitAddFab
 import com.habit.app.ui.components.HabitCard
 import com.habit.app.ui.components.HabitTopAppBar
 import com.habit.app.ui.components.NavigationMode
+import com.habit.app.ui.components.HabitPagerTab
+import com.habit.app.ui.components.HabitPagerTabStrip
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -92,20 +93,14 @@ fun AiSettingsScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                AiSettingsTab.entries.forEach { tab ->
-                    val label = if (tab == AiSettingsTab.MODELS) "模型配置" else "功能绑定"
-                    Tab(
-                        selected = state.activeTab == tab,
-                        onClick = { viewModel.selectTab(tab) },
-                        text = { Text(label) },
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                    )
-                }
-            }
+            HabitPagerTabStrip(
+                tabs = listOf(
+                    HabitPagerTab("模型配置", "ai_tab_models"),
+                    HabitPagerTab("功能绑定", "ai_tab_bindings"),
+                ),
+                selectedIndex = state.activeTab.ordinal,
+                onSelected = { viewModel.selectTab(AiSettingsTab.entries[it]) },
+            )
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
@@ -308,7 +303,7 @@ private fun BindingCard(feature: AiFeature, state: AiSettingsUiState, viewModel:
 
 private fun featureLabel(feature: AiFeature): String = when (feature) {
     AiFeature.WEEKLY_REPORT -> "综合周报"
-    AiFeature.MEAL_CALORIE_ESTIMATE -> "图片热量估算"
+    AiFeature.MEAL_CALORIE_ESTIMATE -> "饮食热量估算"
 }
 
 private fun testButtonLabel(base: String, status: AiTestStatus, busy: Boolean): String = when {

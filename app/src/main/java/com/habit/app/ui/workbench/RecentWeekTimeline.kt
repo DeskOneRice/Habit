@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -110,7 +109,7 @@ private fun RecentDayColumn(
 private fun RecentItems(display: RecentWeekDisplay) {
     Row(
         modifier = Modifier.fillMaxWidth().height(26.dp),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         display.primaryEmoji?.let { key ->
@@ -126,9 +125,9 @@ private fun RecentItems(display: RecentWeekDisplay) {
 }
 
 @Composable
-private fun RowScope.RecentItemText(text: String) {
+private fun RecentItemText(text: String) {
     Box(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.padding(horizontal = 1.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

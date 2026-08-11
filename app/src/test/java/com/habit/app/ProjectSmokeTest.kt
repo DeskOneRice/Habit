@@ -14,9 +14,9 @@ class ProjectSmokeTest {
     }
 
     @Test
-    fun releaseMetadataIsHabitZeroPointSixPointZero() {
-        assertEquals("0.6.0", BuildConfig.VERSION_NAME)
-        assertEquals(12, BuildConfig.VERSION_CODE)
+    fun releaseMetadataIsHabitZeroPointSixPointOne() {
+        assertEquals("0.6.1", BuildConfig.VERSION_NAME)
+        assertEquals(13, BuildConfig.VERSION_CODE)
     }
 
     @Test
@@ -51,7 +51,7 @@ class ProjectSmokeTest {
         val readme = projectFile("README.md").readText()
         assertTextIncludes(
             readme,
-            "## 0.6.0",
+            "## 0.6.1",
             "AI 功能默认关闭",
             "模型档案与功能绑定",
             "仅发送生成周报所需的结构化习惯与饮食数据",
@@ -63,7 +63,7 @@ class ProjectSmokeTest {
         val install = projectFile("docs/INSTALL.md").readText()
         assertTextIncludes(
             install,
-            "Habit-0.6.0-release.apk",
+            "Habit-0.6.1-release.apk",
             "从 0.5.1 覆盖升级",
             "不要先卸载",
             "API Key",

@@ -11,6 +11,9 @@ import com.habit.app.data.ai.CalorieImagePreparer
 import com.habit.app.data.ai.PreparedAiImage
 import com.habit.app.domain.ai.CalorieEstimateParser
 import com.habit.app.domain.ai.CalorieEstimateParseException
+import com.habit.app.domain.ai.CalorieEstimateBeverageInput
+import com.habit.app.domain.ai.CalorieEstimateFoodInput
+import com.habit.app.domain.ai.CalorieEstimateRecordInput
 import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
 import com.habit.app.domain.model.AiCalorieEstimateDraft
@@ -94,6 +97,33 @@ internal fun DietEditorUiState.withAddedPhotos(newPhotos: List<DietPhoto>): Diet
     return copy(
         photos = (photos + newPhotos).mapIndexed { index, photo -> photo.copy(sortOrder = index) },
         message = null,
+    )
+}
+
+private fun DietEditorUiState.toCalorieEstimateInput(selectedPhotoCount: Int): CalorieEstimateRecordInput {
+    val selectedCategory = dietCategories.firstOrNull { it.id == dietCategoryId }?.name.orEmpty()
+    val beverageInput = if (recordType == DietRecordType.BEVERAGE) {
+        CalorieEstimateBeverageInput(
+            brandOrStore = brandOrStore.trim(),
+            name = beverageName.trim(),
+            sizeOrVolume = sizeOrVolume.trim(),
+            temperature = temperature.trim(),
+            sweetness = sweetness.trim(),
+            toppings = toppings.split('、', ',', '，').map(String::trim).filter(String::isNotBlank),
+            cupCount = cupCountText.toIntOrNull() ?: 1,
+        )
+    } else null
+    return CalorieEstimateRecordInput(
+        recordType = recordType.name,
+        category = selectedCategory,
+        mealType = mealType.name.takeIf { recordType == DietRecordType.MEAL },
+        description = description.trim(),
+        foodItems = foodItems.filter { it.name.isNotBlank() }.map { food ->
+            CalorieEstimateFoodInput(food.name.trim(), food.portionText?.trim(), food.calories)
+        },
+        beverage = beverageInput,
+        note = note.trim(),
+        selectedPhotoCount = selectedPhotoCount,
     )
 }
 
@@ -386,7 +416,7 @@ class DietEditorViewModel internal constructor(
 
     fun openEstimateConfirmation() {
         val current = mutableState.value
-        if (current.recordType != DietRecordType.MEAL || current.photos.size !in 1..3) {
+        if (current.photos.size !in 1..3) {
             mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
             return
         }
@@ -469,7 +499,7 @@ class DietEditorViewModel internal constructor(
         onGenerated: (AiCalorieEstimateDraft) -> Unit,
     ): Job {
         val current = mutableState.value
-        if (current.recordType != DietRecordType.MEAL || selectedPhotos.size !in 1..3) {
+        if (selectedPhotos.size !in 1..3) {
             mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
             return viewModelScope.launch { }
         }
@@ -518,7 +548,9 @@ class DietEditorViewModel internal constructor(
                             model = model,
                             apiKey = apiKey,
                             systemPrompt = com.habit.app.domain.ai.CalorieEstimatePrompt.systemPrompt,
-                            userPrompt = com.habit.app.domain.ai.CalorieEstimatePrompt.userPrompt(current.description),
+                            userPrompt = com.habit.app.domain.ai.CalorieEstimatePrompt.userPrompt(
+                                current.toCalorieEstimateInput(selectedPhotos.size),
+                            ),
                             images = prepared.map(PreparedAiImage::asAiPreparedImage),
                         )
                     }
@@ -583,7 +615,7 @@ class DietEditorViewModel internal constructor(
                         current.note,
                         committedPhotos,
                         current.dietCategoryId,
-                        if (current.recordType == DietRecordType.MEAL) current.aiEstimate else null,
+                        current.aiEstimate,
                     ),
                 )
                 photoStore?.removeOrphans(repository.referencedPhotoPaths())

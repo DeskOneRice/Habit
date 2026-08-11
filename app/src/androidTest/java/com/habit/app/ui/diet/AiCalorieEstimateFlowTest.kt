@@ -39,7 +39,7 @@ class AiCalorieEstimateFlowTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun mealActionRequiresOneToThreePhotosAndBeverageNeverShowsIt() {
+    fun mealAndBeverageActionsRequireOneToThreePhotos() {
         var type by mutableStateOf(DietRecordType.MEAL)
         var photoCount by mutableStateOf(0)
 
@@ -55,14 +55,14 @@ class AiCalorieEstimateFlowTest {
         }
 
         composeRule.onNodeWithTag("ai_calorie_estimate").assertIsDisplayed().assertIsNotEnabled()
-        composeRule.onNodeWithText("请先添加 1–3 张餐食照片").assertIsDisplayed()
+        composeRule.onNodeWithText("请先添加 1–3 张饮食照片").assertIsDisplayed()
 
         composeRule.runOnIdle { photoCount = 1 }
-        composeRule.onNodeWithText("已选择 1 张照片").assertIsDisplayed()
+        composeRule.onNodeWithText("已选择 1 张照片，将同时发送记录信息").assertIsDisplayed()
 
         composeRule.runOnIdle { type = DietRecordType.BEVERAGE }
-        composeRule.onNodeWithTag("ai_calorie_estimate").assertDoesNotExist()
-        composeRule.onNodeWithText("AI 估算热量").assertDoesNotExist()
+        composeRule.onNodeWithTag("ai_calorie_estimate").assertIsDisplayed().assertIsEnabled()
+        composeRule.onNodeWithText("已选择 1 张照片，将同时发送记录信息").assertIsDisplayed()
     }
 
     @Test
@@ -143,7 +143,7 @@ class AiCalorieEstimateFlowTest {
             }
         }
 
-        composeRule.onNodeWithText("正在识别这餐…").assertIsDisplayed()
+        composeRule.onNodeWithText("正在识别这条饮食记录…").assertIsDisplayed()
         composeRule.onNodeWithText("已选择 2 张照片").assertIsDisplayed()
         composeRule.onNodeWithTag("ai_estimate_cancel").assertHeightIsAtLeast(48.dp).performClick()
         composeRule.runOnIdle {
@@ -183,7 +183,7 @@ class AiCalorieEstimateFlowTest {
         composeRule.onNodeWithText("青菜").assertIsDisplayed()
         composeRule.onNodeWithText("总计 600–760 kcal").assertIsDisplayed()
         composeRule.onNodeWithText("仅用于估算，请按实际份量调整").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("照片仅用于本次识别，不会展示密钥、模型标识或原始响应")
+        composeRule.onNodeWithText("记录信息与照片仅用于本次识别，不会展示密钥、模型标识或原始响应")
             .performScrollTo().assertIsDisplayed()
 
         val adoptedField = composeRule.onNodeWithTag("ai_estimate_adopted_kcal")

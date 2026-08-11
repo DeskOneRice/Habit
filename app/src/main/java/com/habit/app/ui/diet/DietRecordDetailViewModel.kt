@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 data class DietRecordDetailUiState(
     val loading: Boolean = true,
@@ -26,8 +27,8 @@ data class DietRecordDetailUiState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DietRecordDetailViewModel(
-    recordId: Long,
-    repository: DietRepository,
+    private val recordId: Long,
+    private val repository: DietRepository,
     categoryRepository: DietCategoryRepository,
 ) : ViewModel() {
     val state: StateFlow<DietRecordDetailUiState> = repository.observeRecord(recordId)
@@ -45,7 +46,7 @@ class DietRecordDetailViewModel(
                         loading = false,
                         record = record,
                         categoryName = categories.firstOrNull { it.id == record.dietCategoryId }?.name.orEmpty(),
-                        aiEvidence = record.aiCalorieEstimate.takeIf { record.recordType == DietRecordType.MEAL },
+                        aiEvidence = record.aiCalorieEstimate,
                     )
                 }
             }
@@ -55,4 +56,11 @@ class DietRecordDetailViewModel(
             SharingStarted.Eagerly,
             DietRecordDetailUiState(),
         )
+
+    fun delete(onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            repository.delete(recordId)
+            onDeleted()
+        }
+    }
 }

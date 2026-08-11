@@ -91,7 +91,8 @@ class RoomDietRepositoryTest {
         assertEquals(2, beverage.cupCount)
         assertEquals(listOf("珍珠", "椰果"), beverage.toppings)
         assertNull(saved.mealType)
-        assertNull(saved.aiCalorieEstimate)
+        assertEquals(260, requireNotNull(saved.aiCalorieEstimate).adoptedKcal)
+        assertEquals(CalorieSource.AI_ESTIMATE, saved.calorieSource)
     }
 
     @Test

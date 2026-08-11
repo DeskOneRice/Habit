@@ -106,6 +106,13 @@ class WeeklyReportInputBuilderTest {
         assertTrue(json.contains("\"calorieMissing\":false"))
         assertTrue(json.contains("\"calorieMissing\":true"))
         assertTrue(json.contains("\"completionRate\":"))
+        assertTrue(json.contains("\"periodStartDate\":\"2026-08-03\""))
+        assertTrue(json.contains("\"periodEndDate\":\"2026-08-09\""))
+        assertTrue(json.contains("\"periodLabel\":\"2026年8月3日至8月9日\""))
+        assertTrue(json.contains("\"date\":\"2026-08-03\""))
+        assertFalse(json.contains("startEpochDay"))
+        assertFalse(json.contains("endEpochDay"))
+        assertFalse(json.contains("\"epochDay\""))
     }
 
     @Test

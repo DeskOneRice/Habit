@@ -180,7 +180,7 @@ class DietBrowseFlowTest {
     }
 
     @Test
-    fun beverageDetailNeverShowsAiCard() {
+    fun beverageDetailShowsAiCardWhenEvidenceExists() {
         val root = createTempDirectory("diet_detail_beverage_").toFile()
         val store = TestPhotoStore(root)
         composeRule.setContent {
@@ -189,13 +189,13 @@ class DietBrowseFlowTest {
                     record = detailedBeverage().copy(aiCalorieEstimate = estimate()),
                     categoryName = "咖啡",
                     photoStore = store,
-                    aiEvidence = null,
+                    aiEvidence = estimate(),
                     onRepeat = {},
                 )
             }
         }
         composeRule.onNodeWithTag("diet_detail_beverage_card").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("diet_detail_ai_evidence").assertDoesNotExist()
+        composeRule.onNodeWithTag("diet_detail_ai_evidence").performScrollTo().assertIsDisplayed()
         root.deleteRecursively()
     }
 

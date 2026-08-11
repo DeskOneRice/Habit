@@ -104,12 +104,14 @@ class DietEditorViewModelTest {
                 temperature = "正常冰",
             )
         }
+        viewModel.adoptEstimate(validEstimate(), 520)
         advanceUntilIdle()
         viewModel.save {}
         advanceUntilIdle()
 
         assertEquals("正常冰", repository.lastSaved?.beverage?.temperature)
         assertEquals("", repository.lastSaved?.beverage?.iceLevel)
+        assertEquals(520, repository.lastSaved?.aiCalorieEstimate?.adoptedKcal)
     }
 
     @Test
@@ -280,6 +282,52 @@ class DietEditorViewModelTest {
         assertEquals(1, client.lastImages.size)
         assertFalse(prepared.exists())
         assertEquals(CalorieSource.AI_ESTIMATE, viewModel.state.value.calorieSource)
+    }
+
+    @Test
+    fun beverageGenerationSendsStructuredOrderAttributesWithPhoto() = runTest(dispatcher) {
+        val prepared = kotlin.io.path.createTempFile("drink-ai", ".jpg").toFile()
+            .apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val client = RecordingVisionClient()
+        val viewModel = DietEditorViewModel(
+            recordId = null,
+            repository = RecordingDietRepository(),
+            dateProvider = FixedDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-03T04:00:00Z"), ZoneId.of("UTC")),
+            dietCategoryRepository = FakeDietCategoryRepository(),
+            modelRepository = FakeAiModelRepository(),
+            secretStore = FakeAiSecretStore(),
+            client = client,
+            imagePreparer = FakeCalorieImagePreparer(prepared),
+            photoFileResolver = { prepared },
+            coordinator = AiModelOperationCoordinator(),
+        )
+        advanceUntilIdle()
+        viewModel.update {
+            copy(
+                recordType = DietRecordType.BEVERAGE,
+                dietCategoryId = 5,
+                brandOrStore = "茶铺",
+                beverageName = "芋泥奶茶",
+                sizeOrVolume = "大杯",
+                temperature = "正常冰",
+                sweetness = "三分糖",
+                toppings = "珍珠、芋圆",
+                cupCountText = "2",
+                note = "去奶盖",
+                photos = listOf(DietPhoto(relativePath = "drink.jpg", sortOrder = 0)),
+            )
+        }
+
+        viewModel.generateEstimate()
+        advanceUntilIdle()
+
+        val prompt = requireNotNull(client.lastPrompt)
+        listOf("BEVERAGE", "咖啡", "茶铺", "芋泥奶茶", "大杯", "正常冰", "三分糖", "珍珠", "芋圆", "去奶盖")
+            .forEach { assertTrue("missing $it", prompt.contains(it)) }
+        assertTrue(prompt.contains("\"cupCount\":2"))
+        assertEquals(CalorieSource.AI_ESTIMATE, viewModel.state.value.calorieSource)
+        assertFalse(prepared.exists())
     }
 
     @Test

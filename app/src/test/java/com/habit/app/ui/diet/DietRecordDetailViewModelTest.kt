@@ -50,7 +50,7 @@ class DietRecordDetailViewModelTest {
     }
 
     @Test
-    fun mealEvidenceIsExposedForDetailWhileBeverageEvidenceIsSuppressed() = runTest(dispatcher) {
+    fun mealAndBeverageEvidenceAreExposedForDetail() = runTest(dispatcher) {
         val meal = detailRecord(DietRecordType.MEAL)
         val mealViewModel = DietRecordDetailViewModel(
             recordId = meal.id,
@@ -71,7 +71,22 @@ class DietRecordDetailViewModelTest {
         )
         advanceUntilIdle()
 
-        assertNull(beverageViewModel.state.value.aiEvidence)
+        assertNotNull(beverageViewModel.state.value.aiEvidence)
+        assertEquals(680, beverageViewModel.state.value.aiEvidence?.adoptedKcal)
+    }
+
+    @Test
+    fun deleteRemovesCurrentRecordAndReturnsToPreviousPage() = runTest(dispatcher) {
+        val record = detailRecord(DietRecordType.MEAL)
+        val repository = DetailDietRepository(record)
+        val viewModel = DietRecordDetailViewModel(record.id, repository, DetailCategoryRepository)
+        var returned = false
+
+        viewModel.delete { returned = true }
+        advanceUntilIdle()
+
+        assertEquals(record.id, repository.deletedId)
+        assertTrue(returned)
     }
 
     private fun detailRecord(type: DietRecordType) = MealRecord(
@@ -107,12 +122,13 @@ class DietRecordDetailViewModelTest {
 }
 
 private class DetailDietRepository(private val record: MealRecord) : DietRepository {
+    var deletedId: Long? = null
     override fun observeAll(): Flow<List<MealRecord>> = MutableStateFlow(listOf(record))
     override fun observeDay(epochDay: Long): Flow<List<MealRecord>> = MutableStateFlow(listOf(record))
     override fun observeRecord(id: Long): Flow<MealRecord?> = MutableStateFlow(record.takeIf { it.id == id })
     override fun observeRange(startEpochDay: Long, endEpochDay: Long): Flow<List<MealRecord>> = MutableStateFlow(listOf(record))
     override suspend fun save(id: Long?, draft: MealRecordDraft): Long = error("unused")
-    override suspend fun delete(id: Long) = Unit
+    override suspend fun delete(id: Long) { deletedId = id }
 }
 
 private object DetailCategoryRepository : DietCategoryRepository {

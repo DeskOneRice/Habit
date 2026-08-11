@@ -101,10 +101,6 @@ fun WorkbenchScreen(
                         )
                     }
                 }
-                item { RecentWeekCard(state.recentDays, state.today, onOpenCalendar) }
-                state.weeklyInsight?.let { summary ->
-                    item { WeeklyInsightCard(summary, onOpenWeeklyReport, onOpenAiSettings) }
-                }
                 item { DietTodayCard(state, onOpenDiet, onAddDiet) }
                 if (state.quickDietTemplates.isNotEmpty()) {
                     item {
@@ -123,6 +119,10 @@ fun WorkbenchScreen(
                             }
                         }
                     }
+                }
+                item { RecentWeekCard(state.recentDays, state.today, onOpenCalendar) }
+                state.weeklyInsight?.let { summary ->
+                    item { WeeklyInsightCard(summary, onOpenWeeklyReport, onOpenAiSettings) }
                 }
                 item {
                     HabitCard(Modifier.fillMaxWidth()) {
