@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.test.espresso.Espresso.pressBackUnconditionally
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.HabitTestRobot
 import com.habit.app.MainActivity
@@ -50,11 +51,13 @@ class WelcomeFlowTest {
     @Test
     fun existingHabitStartsAtWorkbenchWithSideDrawerNavigation() {
         robot.seedHabit()
-        composeRule.activityRule.scenario.recreate()
+        composeRule.activityRule.scenario.close()
 
-        robot.assertDisplayed("workbench_screen")
-        robot.assertDisplayed("open_drawer")
-        composeRule.onNodeWithTag("bottom_navigation").assertDoesNotExist()
+        ActivityScenario.launch(MainActivity::class.java).use {
+            robot.assertDisplayed("workbench_screen")
+            robot.assertDisplayed("open_drawer")
+            composeRule.onNodeWithTag("bottom_navigation").assertDoesNotExist()
+        }
     }
 
     @Test

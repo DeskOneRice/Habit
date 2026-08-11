@@ -2,7 +2,9 @@ package com.habit.app.ui.diet
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -10,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.room.Room
@@ -128,6 +131,7 @@ class DietBrowseFlowTest {
                     record = detailedMeal(DietPhoto(relativePath = "library/detail.png", sortOrder = 0)),
                     categoryName = "家常菜",
                     photoStore = store,
+                    aiEvidence = estimate(),
                     onRepeat = {},
                 )
             }
@@ -147,6 +151,11 @@ class DietBrowseFlowTest {
         composeRule.onNodeWithText("餐食 · 家常菜").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("已采用 680 kcal").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("AI 热量依据").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("最终来源  AI 估算").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("采用状态  未修改").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("估算模型  Private Vision Name").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("生成时间  北京时间 2026-08-11 09:30").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("vision-1").assertDoesNotExist()
         root.deleteRecursively()
     }
 
@@ -161,6 +170,7 @@ class DietBrowseFlowTest {
                     record = detailedMeal(photo = null).copy(aiCalorieEstimate = null),
                     categoryName = "家常菜",
                     photoStore = store,
+                    aiEvidence = null,
                     onRepeat = {},
                 )
             }
@@ -179,6 +189,7 @@ class DietBrowseFlowTest {
                     record = detailedBeverage().copy(aiCalorieEstimate = estimate()),
                     categoryName = "咖啡",
                     photoStore = store,
+                    aiEvidence = null,
                     onRepeat = {},
                 )
             }
@@ -200,6 +211,7 @@ class DietBrowseFlowTest {
                     record = detailedMeal(DietPhoto(relativePath = "library/detail.png", sortOrder = 0)),
                     categoryName = "家常菜",
                     photoStore = store,
+                    aiEvidence = estimate(),
                     onRepeat = {},
                 )
             }
@@ -207,6 +219,60 @@ class DietBrowseFlowTest {
 
         composeRule.onNodeWithTag("diet_detail_hero").performClick()
         composeRule.onNodeWithTag("diet_photo_preview").assertIsDisplayed()
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun multiPhotoHeroSwitchesPositionAndPreviewsCurrentPhoto() {
+        val root = createTempDirectory("diet_detail_multi_").toFile()
+        val store = TestPhotoStore(root)
+        val photos = (1..3).map { index ->
+            val relativePath = "library/detail-$index.png"
+            createImage(store.file(relativePath))
+            DietPhoto(relativePath = relativePath, sortOrder = index - 1)
+        }
+        val record = detailedMeal(photo = null).copy(photos = photos)
+
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                DietDetailContent(
+                    record = record,
+                    categoryName = "家常菜",
+                    photoStore = store,
+                    aiEvidence = record.aiCalorieEstimate,
+                    onRepeat = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("diet_detail_photo_position", useUnmergedTree = true).assertTextEquals("1 / 3")
+        composeRule.onNodeWithTag("diet_detail_photo_previous").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("diet_detail_photo_next").assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithTag("diet_detail_photo_position", useUnmergedTree = true).assertTextEquals("2 / 3")
+        composeRule.onNodeWithTag("diet_detail_hero").performClick()
+        composeRule.onNodeWithTag("diet_photo_preview_detail-2.png").assertIsDisplayed()
+        root.deleteRecursively()
+    }
+
+    @Test
+    fun detailWithoutPhotosUsesCompactPlaceholderAndVmEvidenceControlsCard() {
+        val root = createTempDirectory("diet_detail_empty_hero_").toFile()
+        val store = TestPhotoStore(root)
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                DietDetailContent(
+                    record = detailedMeal(photo = null),
+                    categoryName = "家常菜",
+                    photoStore = store,
+                    aiEvidence = null,
+                    onRepeat = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("diet_detail_empty_hero").assertIsDisplayed()
+        composeRule.onNodeWithText("暂无照片").assertIsDisplayed()
+        composeRule.onNodeWithTag("diet_detail_ai_evidence").assertDoesNotExist()
         root.deleteRecursively()
     }
 
@@ -261,6 +327,7 @@ class DietBrowseFlowTest {
                     record = saved,
                     categoryName = "家常菜",
                     photoStore = store,
+                    aiEvidence = saved.aiCalorieEstimate,
                     onRepeat = {},
                 )
             }
@@ -268,6 +335,8 @@ class DietBrowseFlowTest {
 
         composeRule.onNodeWithTag("diet_detail_ai_evidence").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("已采用 710 kcal").assertIsDisplayed()
+        composeRule.onNodeWithText("最终来源  手动记录").assertIsDisplayed()
+        composeRule.onNodeWithText("采用状态  手动修正").assertIsDisplayed()
         root.deleteRecursively()
     }
 
@@ -332,7 +401,7 @@ class DietBrowseFlowTest {
 
     private fun estimate() = AiCalorieEstimate(
         mealRecordId = 8,
-        generatedAt = 1,
+        generatedAt = 1_786_411_800_000,
         modelNameSnapshot = "Private Vision Name",
         modelIdSnapshot = "vision-1",
         items = listOf(

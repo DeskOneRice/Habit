@@ -1,7 +1,5 @@
 package com.habit.app.ui.diet
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -33,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.data.photos.DietPhotoStore
 import com.habit.app.domain.model.AiCalorieEstimate
 import com.habit.app.domain.model.BeverageDetails
+import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietPhoto
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealRecord
@@ -112,6 +113,7 @@ fun DietRecordDetailScreen(
                 record = state.record!!,
                 categoryName = state.categoryName,
                 photoStore = photoStore,
+                aiEvidence = state.aiEvidence,
                 onRepeat = onRepeat,
                 modifier = Modifier.padding(padding),
             )
@@ -124,11 +126,16 @@ internal fun DietDetailContent(
     record: MealRecord,
     categoryName: String,
     photoStore: DietPhotoStore,
+    aiEvidence: AiCalorieEstimate?,
     onRepeat: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var previewFile by remember { mutableStateOf<File?>(null) }
     val sortedPhotos = remember(record.photos) { record.photos.sortedBy(DietPhoto::sortOrder) }
+    var currentPhotoIndex by rememberSaveable(record.id, sortedPhotos.map(DietPhoto::relativePath)) {
+        mutableStateOf(0)
+    }
+    val safePhotoIndex = currentPhotoIndex.coerceIn(0, maxOf(0, sortedPhotos.lastIndex))
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -140,8 +147,15 @@ internal fun DietDetailContent(
     ) {
         DietDetailHero(
             record = record,
-            photo = sortedPhotos.firstOrNull(),
+            photos = sortedPhotos,
+            currentIndex = safePhotoIndex,
             photoStore = photoStore,
+            onPrevious = {
+                currentPhotoIndex = if (safePhotoIndex == 0) sortedPhotos.lastIndex else safePhotoIndex - 1
+            },
+            onNext = {
+                currentPhotoIndex = if (safePhotoIndex == sortedPhotos.lastIndex) 0 else safePhotoIndex + 1
+            },
             onPreview = { previewFile = it },
         )
         DietDetailHeader(record, categoryName)
@@ -151,9 +165,7 @@ internal fun DietDetailContent(
         } else {
             BeverageAttributeCard(record.beverage)
         }
-        record.aiCalorieEstimate
-            ?.takeIf { record.recordType == DietRecordType.MEAL }
-            ?.let { AiEstimateEvidenceCard(it) }
+        aiEvidence?.let { AiEstimateEvidenceCard(it, record.calorieSource) }
         if (record.note.isNotBlank()) DietNoteCard(record.note)
         Button(
             onClick = { onRepeat(record.id) },
@@ -169,39 +181,88 @@ internal fun DietDetailContent(
 @Composable
 private fun DietDetailHero(
     record: MealRecord,
-    photo: DietPhoto?,
+    photos: List<DietPhoto>,
+    currentIndex: Int,
     photoStore: DietPhotoStore,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
     onPreview: (File) -> Unit,
 ) {
+    if (photos.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 96.dp, max = 112.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .testTag("diet_detail_empty_hero"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(defaultDietEmoji(record), style = MaterialTheme.typography.headlineMedium)
+                Text("暂无照片", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
+    val photo = photos[currentIndex]
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val targetWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
     val targetHeight = with(density) { 220.dp.roundToPx() }
-    val file = remember(photo?.relativePath, photoStore) {
-        photo?.let { runCatching { photoStore.file(it.relativePath) }.getOrNull() }
+    val file = remember(photo.relativePath, photoStore) {
+        runCatching { photoStore.file(photo.relativePath) }.getOrNull()
     }
-    val bitmap = remember(file?.path, file?.lastModified(), targetWidth, targetHeight) {
-        file?.let { decodeSampledDetailBitmap(it, targetWidth, targetHeight) }
-    }
+    val bitmapState = rememberDietSampledBitmap(file, targetWidth, targetHeight)
+    val readyBitmap = (bitmapState as? DietSampledBitmapState.Ready)?.bitmap
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(22.dp))
-            .then(if (bitmap != null && file != null) Modifier.clickable { onPreview(file) } else Modifier)
+            .then(if (readyBitmap != null && file != null) Modifier.clickable { onPreview(file) } else Modifier)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag("diet_detail_hero"),
         contentAlignment = Alignment.Center,
     ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
+        when (bitmapState) {
+            DietSampledBitmapState.Loading -> CircularProgressIndicator()
+            DietSampledBitmapState.Failed -> Text(defaultDietEmoji(record), style = MaterialTheme.typography.displaySmall)
+            is DietSampledBitmapState.Ready -> Image(
+                bitmap = bitmapState.bitmap.asImageBitmap(),
                 contentDescription = "饮食照片",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            Text(defaultDietEmoji(record), style = MaterialTheme.typography.displaySmall)
+        }
+        if (photos.size > 1) {
+            FilledTonalIconButton(
+                onClick = onPrevious,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(8.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .testTag("diet_detail_photo_previous"),
+            ) { Text("‹", style = MaterialTheme.typography.headlineMedium) }
+            FilledTonalIconButton(
+                onClick = onNext,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(8.dp)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .testTag("diet_detail_photo_next"),
+            ) { Text("›", style = MaterialTheme.typography.headlineMedium) }
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(10.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            ) {
+                Text(
+                    "${currentIndex + 1} / ${photos.size}",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp).testTag("diet_detail_photo_position"),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
         }
     }
 }
@@ -303,7 +364,7 @@ private fun BeverageAttributeCard(beverage: BeverageDetails?) {
 }
 
 @Composable
-private fun AiEstimateEvidenceCard(estimate: AiCalorieEstimate) {
+private fun AiEstimateEvidenceCard(estimate: AiCalorieEstimate, calorieSource: CalorieSource) {
     HabitCard(Modifier.fillMaxWidth().testTag("diet_detail_ai_evidence")) {
         Text("AI 热量依据", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(5.dp))
@@ -318,6 +379,11 @@ private fun AiEstimateEvidenceCard(estimate: AiCalorieEstimate) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
+        EvidenceMetaLine("最终来源", calorieSource.displayEvidenceSource())
+        EvidenceMetaLine("采用状态", if (estimate.wasModified) "手动修正" else "未修改")
+        EvidenceMetaLine("估算模型", estimate.modelNameSnapshot.ifBlank { "未记录" })
+        EvidenceMetaLine("生成时间", estimate.displayGeneratedAt())
+        Spacer(Modifier.height(8.dp))
         estimate.items.forEach { item ->
             DetailLine(item.name, "${item.portion} · ${item.minKcal}–${item.maxKcal} kcal")
         }
@@ -330,6 +396,16 @@ private fun AiEstimateEvidenceCard(estimate: AiCalorieEstimate) {
             )
         }
     }
+}
+
+@Composable
+private fun EvidenceMetaLine(label: String, value: String) {
+    Text(
+        "$label  $value",
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -367,21 +443,14 @@ private fun MealRecord.displayDateTime(): String {
     return "$date $time"
 }
 
-private fun decodeSampledDetailBitmap(file: File, targetWidth: Int, targetHeight: Int): Bitmap? = runCatching {
-    if (!file.isFile) return null
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(file.path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    BitmapFactory.decodeFile(
-        file.path,
-        BitmapFactory.Options().apply {
-            inSampleSize = calculateInSampleSize(
-                bounds.outWidth,
-                bounds.outHeight,
-                targetWidth,
-                targetHeight,
-            )
-            inPreferredConfig = Bitmap.Config.RGB_565
-        },
-    )
-}.getOrNull()
+private fun CalorieSource.displayEvidenceSource(): String = when (this) {
+    CalorieSource.AI_ESTIMATE -> "AI 估算"
+    CalorieSource.MANUAL -> "手动记录"
+    CalorieSource.ITEM_SUM -> "食物明细合计"
+    CalorieSource.NONE -> "未记录"
+}
+
+private fun AiCalorieEstimate.displayGeneratedAt(): String = "北京时间 " +
+    Instant.ofEpochMilli(generatedAt)
+        .atZone(HabitTimePolicy.zoneId)
+        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))

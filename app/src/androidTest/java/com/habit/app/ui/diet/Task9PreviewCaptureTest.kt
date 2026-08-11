@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Environment
 import android.os.SystemClock
 import android.provider.MediaStore
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -18,14 +17,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import com.habit.app.data.photos.CameraPhotoTarget
 import com.habit.app.data.photos.DietPhotoStore
 import com.habit.app.domain.model.AiCalorieEstimate
-import com.habit.app.domain.model.AiCalorieEstimateDraft
 import com.habit.app.domain.model.AiCalorieItemEstimate
 import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietCategory
@@ -51,33 +51,54 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
+@SdkSuppress(minSdkVersion = 29)
 class Task9PreviewCaptureTest {
     @get:Rule
     val composeRule = createComposeRule()
 
     @Test
     fun captureAiEstimateConfirmationSheet() {
-        val adoptedText = mutableStateOf("680")
+        val root = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "task9-estimate-confirm")
+            .apply { mkdirs() }
+        val first = File(root, "beef-rice.png").also(::createMealPreview)
+        val second = File(root, "vegetables.png").also(::createMealPreview)
         composeRule.setContent {
             HabitTheme(HabitThemeId.SKY_BLUE) {
                 Surface(Modifier.fillMaxSize()) {}
                 AiCalorieEstimateSheet(
-                    estimate = estimateDraft(),
-                    selectedPhotoCount = 2,
-                    adoptedCaloriesText = adoptedText.value,
+                    mealName = "牛肉饭配时蔬",
+                    photos = listOf(
+                        AiEstimatePhotoUi("beef-rice.png", first),
+                        AiEstimatePhotoUi("vegetables.png", second),
+                    ),
+                    selectedPhotoPaths = setOf("beef-rice.png", "vegetables.png"),
+                    estimate = null,
+                    adoptedCaloriesText = "",
                     isBusy = false,
                     errorMessage = null,
-                    onAdoptedCaloriesChange = { adoptedText.value = it },
+                    onTogglePhoto = {},
+                    onConfirmPhotos = {},
+                    onAdoptedCaloriesChange = {},
                     onCancel = {},
                     onAdopt = {},
                 )
             }
         }
+        composeRule.onNodeWithText("发送前确认").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_meal_name").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_photo_beef-rice.png").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_photo_vegetables.png").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithContentDescription("待估算餐食照片")
+                .fetchSemanticsNodes().size == 2
+        }
+        composeRule.onNodeWithTag("ai_estimate_confirm_photos").assertIsDisplayed()
+        composeRule.mainClock.advanceTimeBy(100)
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("ai_estimate_adopt").performScrollTo()
-        composeRule.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
-        saveDeviceScreenshot("task9-ai-estimate-sheet.png")
+        saveDeviceScreenshot("task9-ai-estimate-sheet.png", ::hasRenderedConfirmationSheet)
+        root.deleteRecursively()
     }
 
     @Test
@@ -136,7 +157,7 @@ class Task9PreviewCaptureTest {
             candidate.recycle()
             SystemClock.sleep(50)
         }
-        val screenshot = checkNotNull(validatedScreenshot) { "Preview did not render non-white hero content" }
+        val screenshot = checkNotNull(validatedScreenshot) { "Preview did not render validated content" }
         val resolver = context.contentResolver
         val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/HabitPreviews/"
@@ -214,6 +235,25 @@ class Task9PreviewCaptureTest {
         return sampled > 0 && nonWhite * 100 / sampled >= 30
     }
 
+    private fun hasRenderedConfirmationSheet(bitmap: Bitmap): Boolean {
+        val left = bitmap.width / 20
+        val right = bitmap.width * 19 / 20
+        val top = bitmap.height / 5
+        val bottom = bitmap.height * 19 / 20
+        var sampled = 0
+        var nonWhite = 0
+        for (y in top until bottom step 5) {
+            for (x in left until right step 5) {
+                val pixel = bitmap.getPixel(x, y)
+                sampled += 1
+                if (Color.red(pixel) < 235 || Color.green(pixel) < 235 || Color.blue(pixel) < 235) {
+                    nonWhite += 1
+                }
+            }
+        }
+        return sampled > 0 && nonWhite * 100 / sampled >= 3
+    }
+
     private fun createMealPreview(file: File) {
         file.parentFile?.mkdirs()
         val bitmap = Bitmap.createBitmap(720, 405, Bitmap.Config.ARGB_8888)
@@ -259,22 +299,12 @@ class Task9PreviewCaptureTest {
         aiCalorieEstimate = estimate(),
     )
 
-    private fun estimateDraft() = AiCalorieEstimateDraft(
-        generatedAt = 1,
-        modelNameSnapshot = "Private Vision Name",
-        modelIdSnapshot = "vision-1",
-        items = listOf(AiCalorieItemEstimate("牛肉饭配时蔬", "1 份", 600, 760)),
-        totalMinKcal = 600,
-        totalMaxKcal = 760,
-        suggestedKcal = 680,
-        adoptedKcal = 680,
-        wasModified = false,
-        accuracyNote = "仅用于估算，请按实际份量调整",
-    )
-
     private fun estimate() = AiCalorieEstimate(
         mealRecordId = 8,
-        generatedAt = 1,
+        generatedAt = LocalDateTime.of(2026, 8, 11, 12, 30)
+            .atZone(ZoneId.of("Asia/Shanghai"))
+            .toInstant()
+            .toEpochMilli(),
         modelNameSnapshot = "Private Vision Name",
         modelIdSnapshot = "vision-1",
         items = listOf(

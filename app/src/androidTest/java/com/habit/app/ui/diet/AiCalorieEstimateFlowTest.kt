@@ -1,11 +1,15 @@
 package com.habit.app.ui.diet
 
+import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -21,6 +25,8 @@ import com.habit.app.domain.model.AiCalorieItemEstimate
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.ui.theme.HabitTheme
 import com.habit.app.ui.theme.HabitThemeId
+import java.io.File
+import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -57,6 +63,58 @@ class AiCalorieEstimateFlowTest {
         composeRule.runOnIdle { type = DietRecordType.BEVERAGE }
         composeRule.onNodeWithTag("ai_calorie_estimate").assertDoesNotExist()
         composeRule.onNodeWithText("AI 估算热量").assertDoesNotExist()
+    }
+
+    @Test
+    fun sendConfirmationShowsMealAndDefaultsAllPhotosSelectedBeforeRequest() {
+        val root = createTempDirectory("ai_send_confirm_").toFile()
+        val first = createImage(File(root, "first.png"))
+        val second = createImage(File(root, "second.png"))
+        var selected by mutableStateOf(setOf("first", "second"))
+        var confirmed = false
+
+        composeRule.setContent {
+            HabitTheme(HabitThemeId.SKY_BLUE) {
+                AiCalorieEstimateSheet(
+                    mealName = "牛肉饭配时蔬",
+                    photos = listOf(
+                        AiEstimatePhotoUi("first", first),
+                        AiEstimatePhotoUi("second", second),
+                    ),
+                    selectedPhotoPaths = selected,
+                    estimate = null,
+                    adoptedCaloriesText = "",
+                    isBusy = false,
+                    errorMessage = null,
+                    onTogglePhoto = { path ->
+                        selected = if (path in selected) selected - path else selected + path
+                    },
+                    onConfirmPhotos = { confirmed = true },
+                    onAdoptedCaloriesChange = {},
+                    onCancel = {},
+                    onAdopt = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("发送前确认").assertIsDisplayed()
+        composeRule.onNodeWithText("牛肉饭配时蔬").assertIsDisplayed()
+        composeRule.onNodeWithText("已选择 2 / 2 张照片").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_photo_first").assertIsSelected()
+        composeRule.onNodeWithTag("ai_estimate_photo_second").assertIsSelected().performClick()
+        composeRule.onNodeWithTag("ai_estimate_photo_second").assertIsNotSelected()
+        composeRule.onNodeWithText("已选择 1 / 2 张照片").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_confirm_photos")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(confirmed) }
+
+        composeRule.onNodeWithTag("ai_estimate_photo_first").performClick()
+        composeRule.onNodeWithText("请至少选择 1 张照片").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_estimate_confirm_photos").assertIsNotEnabled()
+        root.deleteRecursively()
     }
 
     @Test
@@ -179,4 +237,13 @@ class AiCalorieEstimateFlowTest {
         wasModified = false,
         accuracyNote = "仅用于估算，请按实际份量调整",
     )
+
+    private fun createImage(file: File): File {
+        file.parentFile?.mkdirs()
+        file.outputStream().use { output ->
+            Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+                .compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        return file
+    }
 }

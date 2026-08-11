@@ -78,6 +78,10 @@ data class DietEditorUiState(
     val dietCategoryId: Long = 0,
     val isSaving: Boolean = false,
     val isGeneratingEstimate: Boolean = false,
+    val isEstimateSheetVisible: Boolean = false,
+    val selectedEstimatePhotoPaths: Set<String> = emptySet(),
+    val estimatePreview: AiCalorieEstimateDraft? = null,
+    val estimateAdoptedCaloriesText: String = "",
     val message: String? = null,
 )
 
@@ -367,21 +371,110 @@ class DietEditorViewModel internal constructor(
         }
     }
 
-    fun generateEstimate(): Job = generateEstimateInternal { estimate ->
+    fun generateEstimate(): Job = generateEstimateInternal(mutableState.value.photos) { estimate ->
         adoptEstimate(estimate, estimate.suggestedKcal)
     }
 
     fun generateEstimatePreview(onPreviewReady: (AiCalorieEstimateDraft) -> Unit): Job =
-        generateEstimateInternal(onPreviewReady)
+        generateEstimateInternal(mutableState.value.photos) { estimate ->
+            mutableState.value = mutableState.value.copy(
+                estimatePreview = estimate,
+                estimateAdoptedCaloriesText = estimate.suggestedKcal.toString(),
+            )
+            onPreviewReady(estimate)
+        }
 
-    private fun generateEstimateInternal(onGenerated: (AiCalorieEstimateDraft) -> Unit): Job {
+    fun openEstimateConfirmation() {
         val current = mutableState.value
         if (current.recordType != DietRecordType.MEAL || current.photos.size !in 1..3) {
+            mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
+            return
+        }
+        mutableState.value = current.copy(
+            isEstimateSheetVisible = true,
+            selectedEstimatePhotoPaths = current.photos.map(DietPhoto::relativePath).toSet(),
+            estimatePreview = null,
+            estimateAdoptedCaloriesText = current.finalCaloriesText,
+            message = null,
+        )
+    }
+
+    fun toggleEstimatePhoto(relativePath: String) {
+        val current = mutableState.value
+        if (!current.isEstimateSheetVisible || current.isGeneratingEstimate || current.estimatePreview != null) return
+        if (current.photos.none { it.relativePath == relativePath }) return
+        mutableState.value = current.copy(
+            selectedEstimatePhotoPaths = if (relativePath in current.selectedEstimatePhotoPaths) {
+                current.selectedEstimatePhotoPaths - relativePath
+            } else {
+                current.selectedEstimatePhotoPaths + relativePath
+            },
+            message = null,
+        )
+    }
+
+    fun confirmEstimatePhotos(): Job {
+        val current = mutableState.value
+        val selectedPhotos = current.photos.filter { it.relativePath in current.selectedEstimatePhotoPaths }
+        if (!current.isEstimateSheetVisible || selectedPhotos.size !in 1..3) {
+            mutableState.value = current.copy(message = "请至少选择 1 张照片")
+            return viewModelScope.launch { }
+        }
+        mutableState.value = current.copy(
+            estimatePreview = null,
+            estimateAdoptedCaloriesText = current.finalCaloriesText,
+            message = null,
+        )
+        return generateEstimateInternal(selectedPhotos) { estimate ->
+            mutableState.value = mutableState.value.copy(
+                estimatePreview = estimate,
+                estimateAdoptedCaloriesText = estimate.suggestedKcal.toString(),
+                message = null,
+            )
+        }
+    }
+
+    fun updateEstimateAdoptedCalories(value: String) {
+        mutableState.value = mutableState.value.copy(
+            estimateAdoptedCaloriesText = value.filter(Char::isDigit),
+        )
+    }
+
+    fun adoptEstimatePreview() {
+        val current = mutableState.value
+        val estimate = current.estimatePreview ?: return
+        val calories = current.estimateAdoptedCaloriesText.toIntOrNull() ?: return
+        adoptEstimate(estimate, calories)
+        mutableState.value = mutableState.value.copy(
+            isEstimateSheetVisible = false,
+            selectedEstimatePhotoPaths = emptySet(),
+            estimatePreview = null,
+            estimateAdoptedCaloriesText = "",
+        )
+    }
+
+    fun cancelEstimateFlow() {
+        cancelEstimateGeneration()
+        mutableState.value = mutableState.value.copy(
+            isEstimateSheetVisible = false,
+            selectedEstimatePhotoPaths = emptySet(),
+            estimatePreview = null,
+            estimateAdoptedCaloriesText = "",
+            message = null,
+        )
+    }
+
+    private fun generateEstimateInternal(
+        selectedPhotos: List<DietPhoto>,
+        onGenerated: (AiCalorieEstimateDraft) -> Unit,
+    ): Job {
+        val current = mutableState.value
+        if (current.recordType != DietRecordType.MEAL || selectedPhotos.size !in 1..3) {
             mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
             return viewModelScope.launch { }
         }
         val files = try {
-            current.photos.map(photoFileResolver).also { sourceFiles ->
+            selectedPhotos.map(photoFileResolver).also { sourceFiles ->
                 require(sourceFiles.all { it.isFile && it.canRead() }) { "Selected photo is unreadable" }
             }
         } catch (_: Exception) {

@@ -8,10 +8,10 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
@@ -41,7 +41,7 @@ fun HabitApp(container: AppContainer) {
     val firstRunDestination by viewModel.destination.collectAsStateWithLifecycle(
         initialValue = FirstRunDestination.Loading,
     )
-    var initialDestination by remember { mutableStateOf<FirstRunDestination?>(null) }
+    var initialDestination by rememberSaveable { mutableStateOf<FirstRunDestination?>(null) }
     if (initialDestination == null && firstRunDestination != FirstRunDestination.Loading) {
         initialDestination = firstRunDestination
     }

@@ -318,6 +318,97 @@ class DietEditorViewModelTest {
     }
 
     @Test
+    fun photoConfirmationDefaultsToAllAndRequestsOnlySelectedPhotosAfterConfirm() = runTest(dispatcher) {
+        val first = kotlin.io.path.createTempFile("diet-ai-first", ".jpg").toFile().apply { writeBytes(byteArrayOf(1)) }
+        val second = kotlin.io.path.createTempFile("diet-ai-second", ".jpg").toFile().apply { writeBytes(byteArrayOf(2)) }
+        val prepared = kotlin.io.path.createTempFile("diet-ai-confirm", ".jpg").toFile().apply { writeBytes(byteArrayOf(3)) }
+        val preparer = FakeCalorieImagePreparer(prepared)
+        val client = RecordingVisionClient()
+        val files = mapOf("first.jpg" to first, "second.jpg" to second)
+        val viewModel = DietEditorViewModel(
+            recordId = null,
+            repository = RecordingDietRepository(),
+            dateProvider = FixedDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-03T04:00:00Z"), ZoneId.of("UTC")),
+            dietCategoryRepository = FakeDietCategoryRepository(),
+            modelRepository = FakeAiModelRepository(),
+            secretStore = FakeAiSecretStore(),
+            client = client,
+            imagePreparer = preparer,
+            photoFileResolver = { photo -> requireNotNull(files[photo.relativePath]) },
+            coordinator = AiModelOperationCoordinator(),
+        )
+        advanceUntilIdle()
+        viewModel.update {
+            copy(
+                description = "牛肉饭",
+                photos = listOf(
+                    DietPhoto(relativePath = "first.jpg", sortOrder = 0),
+                    DietPhoto(relativePath = "second.jpg", sortOrder = 1),
+                ),
+            )
+        }
+
+        viewModel.openEstimateConfirmation()
+
+        assertTrue(viewModel.state.value.isEstimateSheetVisible)
+        assertEquals(setOf("first.jpg", "second.jpg"), viewModel.state.value.selectedEstimatePhotoPaths)
+        assertEquals(null, client.lastPrompt)
+
+        viewModel.toggleEstimatePhoto("second.jpg")
+        viewModel.confirmEstimatePhotos()
+        advanceUntilIdle()
+
+        assertEquals(listOf(first), preparer.lastSourceFiles)
+        assertEquals(520, viewModel.state.value.estimatePreview?.suggestedKcal)
+        assertEquals("520", viewModel.state.value.estimateAdoptedCaloriesText)
+        assertEquals("", viewModel.state.value.finalCaloriesText)
+
+        viewModel.updateEstimateAdoptedCalories("545 kcal")
+        val retainedUiState = viewModel.state.value
+        assertEquals(520, retainedUiState.estimatePreview?.suggestedKcal)
+        assertEquals("545", retainedUiState.estimateAdoptedCaloriesText)
+        viewModel.adoptEstimatePreview()
+
+        assertFalse(viewModel.state.value.isEstimateSheetVisible)
+        assertEquals("545", viewModel.state.value.finalCaloriesText)
+        assertEquals(CalorieSource.MANUAL, viewModel.state.value.calorieSource)
+        assertEquals(545, viewModel.state.value.aiEstimate?.adoptedKcal)
+        assertTrue(viewModel.state.value.aiEstimate?.wasModified == true)
+        assertEquals("牛肉饭", viewModel.state.value.description)
+        assertEquals(listOf("first.jpg", "second.jpg"), viewModel.state.value.photos.map(DietPhoto::relativePath))
+        first.delete()
+        second.delete()
+    }
+
+    @Test
+    fun estimateFlowStateRemainsInViewModelAndRequiresAtLeastOneSelectedPhoto() = runTest(dispatcher) {
+        val viewModel = editor()
+        advanceUntilIdle()
+        viewModel.update {
+            copy(
+                description = "牛肉饭",
+                photos = listOf(DietPhoto(relativePath = "meal.jpg", sortOrder = 0)),
+                finalCaloriesText = "680",
+            )
+        }
+
+        viewModel.openEstimateConfirmation()
+        viewModel.toggleEstimatePhoto("meal.jpg")
+        viewModel.confirmEstimatePhotos()
+
+        val retainedUiState = viewModel.state.value
+        assertTrue(retainedUiState.isEstimateSheetVisible)
+        assertEquals(emptySet<String>(), retainedUiState.selectedEstimatePhotoPaths)
+        assertFalse(retainedUiState.isGeneratingEstimate)
+        assertEquals("680", retainedUiState.finalCaloriesText)
+
+        viewModel.cancelEstimateFlow()
+        assertFalse(viewModel.state.value.isEstimateSheetVisible)
+        assertEquals("680", viewModel.state.value.finalCaloriesText)
+    }
+
+    @Test
     fun generationRejectsSelectedPhotoThatIsNotReadable() = runTest(dispatcher) {
         val source = UnreadableImageFile()
         val prepared = kotlin.io.path.createTempFile("diet-ai", ".jpg").toFile()
@@ -414,19 +505,32 @@ class DietEditorViewModelTest {
             copy(description = "lunch", photos = listOf(DietPhoto(relativePath = "selected.jpg", sortOrder = 0)))
         }
 
-        viewModel.generateEstimate()
+        viewModel.openEstimateConfirmation()
+        viewModel.confirmEstimatePhotos()
         advanceUntilIdle()
         assertTrue(client.started.isCompleted)
         assertTrue(viewModel.state.value.isGeneratingEstimate)
+        assertTrue(viewModel.state.value.isEstimateSheetVisible)
 
-        viewModel.cancelEstimateGeneration()
+        viewModel.cancelEstimateFlow()
         advanceUntilIdle()
 
         assertTrue(client.wasCancelled)
         assertFalse(prepared.exists())
         assertFalse(viewModel.state.value.isGeneratingEstimate)
+        assertFalse(viewModel.state.value.isEstimateSheetVisible)
+        assertEquals(emptySet<String>(), viewModel.state.value.selectedEstimatePhotoPaths)
         assertEquals("520", viewModel.state.value.finalCaloriesText)
         assertEquals(CalorieSource.AI_ESTIMATE, viewModel.state.value.calorieSource)
+
+        prepared.writeBytes(byteArrayOf(4, 5, 6))
+        viewModel.openEstimateConfirmation()
+        viewModel.confirmEstimatePhotos()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isGeneratingEstimate)
+        viewModel.cancelEstimateFlow()
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.isGeneratingEstimate)
     }
 
     private fun editor(templates: RecordingTemplateRepository? = null) = DietEditorViewModel(
@@ -535,8 +639,10 @@ private class FakeAiSecretStore : AiSecretStore {
 
 private class FakeCalorieImagePreparer(private val file: File) : CalorieImagePreparer {
     var prepareCalls: Int = 0
+    var lastSourceFiles: List<File> = emptyList()
     override suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage> {
         prepareCalls += 1
+        lastSourceFiles = sourceFiles
         return listOf(PreparedAiImage(file))
     }
 }
