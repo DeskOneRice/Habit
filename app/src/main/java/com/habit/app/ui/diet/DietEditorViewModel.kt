@@ -5,8 +5,19 @@ import androidx.lifecycle.viewModelScope
 import android.net.Uri
 import com.habit.app.data.photos.CameraPhotoTarget
 import com.habit.app.data.photos.DietPhotoStore
+import com.habit.app.data.ai.AiCompletionClient
+import com.habit.app.data.ai.AiSecretStore
+import com.habit.app.data.ai.CalorieImagePreparer
+import com.habit.app.data.ai.PreparedAiImage
+import com.habit.app.domain.ai.CalorieEstimateParser
+import com.habit.app.domain.ai.CalorieEstimateParseException
 import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
+import com.habit.app.domain.model.AiCalorieEstimateDraft
+import com.habit.app.domain.model.CalorieSource
+import com.habit.app.domain.model.AiFeature
+import com.habit.app.domain.model.AiModelConfig
+import com.habit.app.domain.model.AiTestStatus
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.DietPhoto
 import com.habit.app.data.photos.MAX_DIET_PHOTOS
@@ -21,6 +32,7 @@ import com.habit.app.domain.model.displayTemperature
 import com.habit.app.domain.repository.DietCategoryRepository
 import com.habit.app.domain.repository.DietRepository
 import com.habit.app.domain.repository.DietTemplateRepository
+import com.habit.app.domain.repository.AiModelRepository
 import com.habit.app.domain.stats.calculateCalories
 import com.habit.app.domain.stats.suggestMealType
 import com.habit.app.domain.time.DeviceDateProvider
@@ -28,6 +40,9 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +51,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import com.habit.app.ui.ai.AiModelOperationCoordinator
 
 data class DietEditorUiState(
     val recordType: DietRecordType = DietRecordType.MEAL,
@@ -45,6 +62,8 @@ data class DietEditorUiState(
     val description: String = "",
     val foodItems: List<FoodItemDraft> = emptyList(),
     val finalCaloriesText: String = "",
+    val calorieSource: CalorieSource = CalorieSource.NONE,
+    val aiEstimate: AiCalorieEstimateDraft? = null,
     val beverageCategory: BeverageCategory = BeverageCategory.COFFEE,
     val brandOrStore: String = "",
     val beverageName: String = "",
@@ -58,6 +77,7 @@ data class DietEditorUiState(
     val dietCategories: List<DietCategory> = emptyList(),
     val dietCategoryId: Long = 0,
     val isSaving: Boolean = false,
+    val isGeneratingEstimate: Boolean = false,
     val message: String? = null,
 )
 
@@ -79,7 +99,7 @@ internal fun DietEditorUiState.withTime(value: LocalTime) = copy(
     time = value.withSecond(0).withNano(0),
 )
 
-class DietEditorViewModel(
+class DietEditorViewModel internal constructor(
     private val recordId: Long?,
     private val repository: DietRepository,
     private val dateProvider: DeviceDateProvider,
@@ -89,6 +109,14 @@ class DietEditorViewModel(
     private val templateId: Long? = null,
     private val templateRepository: DietTemplateRepository? = null,
     private val dietCategoryRepository: DietCategoryRepository,
+    private val modelRepository: AiModelRepository? = null,
+    private val secretStore: AiSecretStore? = null,
+    private val client: AiCompletionClient? = null,
+    private val imagePreparer: CalorieImagePreparer? = null,
+    private val photoFileResolver: (DietPhoto) -> File = { photo ->
+        requireNotNull(photoStore) { "Photo store unavailable" }.file(photo.relativePath)
+    },
+    private val coordinator: AiModelOperationCoordinator = AiModelOperationCoordinator(),
 ) : ViewModel() {
     private var mealCategories: List<DietCategory> = emptyList()
     private var beverageCategories: List<DietCategory> = emptyList()
@@ -101,6 +129,8 @@ class DietEditorViewModel(
         ),
     )
     val state: StateFlow<DietEditorUiState> = mutableState.asStateFlow()
+    private val estimateActionGate = AtomicBoolean(false)
+    private val estimateGenerationJob = AtomicReference<Job?>(null)
 
     init {
         viewModelScope.launch {
@@ -127,6 +157,8 @@ class DietEditorViewModel(
                     description = record.description,
                     foodItems = record.foodItems.map { FoodItemDraft(it.name, it.portionText, it.calories) },
                     finalCaloriesText = record.finalCalories?.toString().orEmpty(),
+                    calorieSource = record.calorieSource,
+                    aiEstimate = record.aiCalorieEstimate?.toDraft(),
                     beverageCategory = drink?.category ?: BeverageCategory.COFFEE,
                     brandOrStore = drink?.brandOrStore.orEmpty(),
                     beverageName = drink?.beverageName.orEmpty(),
@@ -160,6 +192,12 @@ class DietEditorViewModel(
             description = draft.description,
             foodItems = draft.foodItems,
             finalCaloriesText = draft.manualFinalCalories?.toString().orEmpty(),
+            calorieSource = when {
+                draft.aiCalorieEstimate != null && !draft.aiCalorieEstimate.wasModified -> CalorieSource.AI_ESTIMATE
+                draft.aiCalorieEstimate != null -> CalorieSource.MANUAL
+                else -> CalorieSource.NONE
+            },
+            aiEstimate = draft.aiCalorieEstimate,
             beverageCategory = drink?.category ?: BeverageCategory.COFFEE,
             brandOrStore = drink?.brandOrStore.orEmpty(),
             beverageName = drink?.beverageName.orEmpty(),
@@ -176,9 +214,31 @@ class DietEditorViewModel(
     }
 
     fun update(block: DietEditorUiState.() -> DietEditorUiState) {
-        val previousType = mutableState.value.recordType
-        mutableState.value = mutableState.value.block().copy(message = null)
+        val previous = mutableState.value
+        val previousType = previous.recordType
+        val updated = previous.block().copy(message = null)
+        mutableState.value = if (updated.finalCaloriesText != previous.finalCaloriesText && updated.aiEstimate != null) {
+            val adopted = updated.finalCaloriesText.toIntOrNull() ?: updated.aiEstimate.adoptedKcal
+            updated.copy(
+                calorieSource = CalorieSource.MANUAL,
+                aiEstimate = updated.aiEstimate.copy(adoptedKcal = adopted, wasModified = true),
+            )
+        } else updated
         if (previousType != mutableState.value.recordType) refreshCategoryChoices()
+    }
+
+    fun adoptEstimate(estimate: AiCalorieEstimateDraft, adoptedKcal: Int) {
+        require(adoptedKcal >= 0) { "Calories cannot be negative" }
+        val adopted = estimate.copy(
+            adoptedKcal = adoptedKcal,
+            wasModified = adoptedKcal != estimate.suggestedKcal,
+        )
+        mutableState.value = mutableState.value.copy(
+            finalCaloriesText = adoptedKcal.toString(),
+            calorieSource = if (adopted.wasModified) CalorieSource.MANUAL else CalorieSource.AI_ESTIMATE,
+            aiEstimate = adopted,
+            message = null,
+        )
     }
 
     fun selectDietCategory(id: Long) {
@@ -307,7 +367,88 @@ class DietEditorViewModel(
         }
     }
 
+    fun generateEstimate(): Job {
+        val current = mutableState.value
+        if (current.recordType != DietRecordType.MEAL || current.photos.size !in 1..3) {
+            mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
+            return viewModelScope.launch { }
+        }
+        val files = try {
+            current.photos.map(photoFileResolver).also { sourceFiles ->
+                require(sourceFiles.all { it.isFile && it.canRead() }) { "Selected photo is unreadable" }
+            }
+        } catch (_: Exception) {
+            mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
+            return viewModelScope.launch { }
+        }
+        val models = modelRepository
+        val keys = secretStore
+        val completionClient = client
+        val preparer = imagePreparer
+        if (models == null || keys == null || completionClient == null || preparer == null ||
+            !estimateActionGate.compareAndSet(false, true)
+        ) {
+            mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
+            return viewModelScope.launch { }
+        }
+        mutableState.value = current.copy(isGeneratingEstimate = true, message = null)
+        val job = viewModelScope.launch {
+            val prepared = mutableListOf<PreparedAiImage>()
+            try {
+                val bindingId = coordinator.withBindings {
+                    models.observeBindings().first()
+                        .firstOrNull { it.feature == AiFeature.MEAL_CALORIE_ESTIMATE }
+                        ?.modelConfigId
+                } ?: throw EstimateGenerationFailure(ESTIMATE_UNAVAILABLE_MESSAGE)
+                val response = coordinator.withModel(bindingId) {
+                    val model = models.observeModel(bindingId).first()
+                        ?: throw EstimateGenerationFailure(ESTIMATE_UNAVAILABLE_MESSAGE)
+                    coordinator.register(model.id, model.externalId)
+                    coordinator.withBindings {
+                        val latestBinding = models.observeBindings().first()
+                            .firstOrNull { it.feature == AiFeature.MEAL_CALORIE_ESTIMATE }
+                            ?.modelConfigId
+                        if (latestBinding != model.id || !model.isEligibleMealEstimateModel()) {
+                            throw EstimateGenerationFailure(ESTIMATE_UNAVAILABLE_MESSAGE)
+                        }
+                        val apiKey = try { keys.get(model.externalId) } catch (_: Exception) { null }
+                        if (apiKey.isNullOrBlank()) throw EstimateGenerationFailure(ESTIMATE_UNAVAILABLE_MESSAGE)
+                        prepared += preparer.prepare(files)
+                        model to completionClient.completeVision(
+                            model = model,
+                            apiKey = apiKey,
+                            systemPrompt = com.habit.app.domain.ai.CalorieEstimatePrompt.systemPrompt,
+                            userPrompt = com.habit.app.domain.ai.CalorieEstimatePrompt.userPrompt(current.description),
+                            images = prepared.map(PreparedAiImage::asAiPreparedImage),
+                        )
+                    }
+                }
+                val estimate = CalorieEstimateParser.parse(response.second, response.first, clock.millis())
+                adoptEstimate(estimate, estimate.suggestedKcal)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: CalorieEstimateParseException) {
+                mutableState.value = mutableState.value.copy(message = ESTIMATE_RESPONSE_MESSAGE)
+            } catch (failure: EstimateGenerationFailure) {
+                mutableState.value = mutableState.value.copy(message = failure.safeMessage)
+            } catch (_: Exception) {
+                mutableState.value = mutableState.value.copy(message = ESTIMATE_FAILED_MESSAGE)
+            } finally {
+                prepared.forEach { image -> runCatching { image.close() } }
+                estimateActionGate.set(false)
+                mutableState.value = mutableState.value.copy(isGeneratingEstimate = false)
+            }
+        }
+        estimateGenerationJob.set(job)
+        return job
+    }
+
+    fun cancelEstimateGeneration() {
+        estimateGenerationJob.get()?.cancel()
+    }
+
     fun save(onSaved: () -> Unit) {
+        if (mutableState.value.isGeneratingEstimate) return
         viewModelScope.launch {
             mutableState.value = mutableState.value.copy(isSaving = true, message = null)
             try {
@@ -342,6 +483,7 @@ class DietEditorViewModel(
                         current.note,
                         committedPhotos,
                         current.dietCategoryId,
+                        if (current.recordType == DietRecordType.MEAL) current.aiEstimate else null,
                     ),
                 )
                 photoStore?.removeOrphans(repository.referencedPhotoPaths())
@@ -400,6 +542,7 @@ class DietEditorViewModel(
             current.note,
             photos,
             current.dietCategoryId,
+            aiCalorieEstimate = null,
         )
     }
 
@@ -412,3 +555,38 @@ class DietEditorViewModel(
         }
     }
 }
+
+private fun com.habit.app.domain.model.AiCalorieEstimate.toDraft() = AiCalorieEstimateDraft(
+    generatedAt = generatedAt,
+    modelNameSnapshot = modelNameSnapshot,
+    modelIdSnapshot = modelIdSnapshot,
+    items = items,
+    totalMinKcal = totalMinKcal,
+    totalMaxKcal = totalMaxKcal,
+    suggestedKcal = suggestedKcal,
+    adoptedKcal = adoptedKcal,
+    wasModified = wasModified,
+    accuracyNote = accuracyNote,
+)
+
+private fun AiModelConfig.isEligibleMealEstimateModel(): Boolean {
+    if (!enabled || !supportsVision) return false
+    val visionStatus = if (lastTestMessage.startsWith(TEST_STATE_PREFIX)) {
+        lastTestMessage.removePrefix(TEST_STATE_PREFIX)
+            .split('|')
+            .firstOrNull { it.startsWith("vision=") }
+            ?.substringAfter('=')
+            ?.let { runCatching { AiTestStatus.valueOf(it) }.getOrNull() }
+            ?: AiTestStatus.UNTESTED
+    } else {
+        lastTestStatus
+    }
+    return visionStatus == AiTestStatus.PASSED
+}
+
+private class EstimateGenerationFailure(val safeMessage: String) : IllegalStateException()
+
+private const val TEST_STATE_PREFIX = "habit-test-v1|"
+private const val ESTIMATE_UNAVAILABLE_MESSAGE = "Calorie estimation is unavailable for this meal"
+private const val ESTIMATE_RESPONSE_MESSAGE = "The calorie estimate response was invalid"
+private const val ESTIMATE_FAILED_MESSAGE = "Unable to generate a calorie estimate"

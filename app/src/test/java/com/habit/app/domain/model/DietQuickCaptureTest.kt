@@ -25,6 +25,19 @@ class DietQuickCaptureTest {
             photos = listOf(DietPhoto(9, "library/source.jpg", 0)),
             createdAt = 1,
             updatedAt = 2,
+            aiCalorieEstimate = AiCalorieEstimate(
+                mealRecordId = 42,
+                generatedAt = 3,
+                modelNameSnapshot = "Vision",
+                modelIdSnapshot = "vision-1",
+                items = listOf(AiCalorieItemEstimate("noodles", "one bowl", 400, 500)),
+                totalMinKcal = 400,
+                totalMaxKcal = 500,
+                suggestedKcal = 450,
+                adoptedKcal = 450,
+                wasModified = false,
+                accuracyNote = "Approximate",
+            ),
         )
 
         val draft = source.toRepeatDraft(
@@ -38,5 +51,6 @@ class DietQuickCaptureTest {
         assertEquals(450, draft.manualFinalCalories)
         assertEquals(listOf(FoodItemDraft("面条", "一碗", 420)), draft.foodItems)
         assertTrue(draft.photos.isEmpty())
+        assertEquals(null, draft.aiCalorieEstimate)
     }
 }

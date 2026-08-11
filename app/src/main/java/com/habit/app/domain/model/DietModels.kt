@@ -57,6 +57,7 @@ data class MealRecordDraft(
     val note: String,
     val photos: List<DietPhoto> = emptyList(),
     val dietCategoryId: Long = 0,
+    val aiCalorieEstimate: AiCalorieEstimateDraft? = null,
 )
 
 data class MealRecord(
@@ -76,6 +77,7 @@ data class MealRecord(
     val updatedAt: Long,
     val photos: List<DietPhoto> = emptyList(),
     val dietCategoryId: Long = 0,
+    val aiCalorieEstimate: AiCalorieEstimate? = null,
 )
 
 data class DietPhoto(
@@ -116,6 +118,7 @@ fun MealRecord.toRepeatDraft(nowMillis: Long, epochDay: Long): MealRecordDraft =
     note = note,
     photos = emptyList(),
     dietCategoryId = dietCategoryId,
+    aiCalorieEstimate = null,
 )
 
 data class CalorieCalculation(

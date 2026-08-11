@@ -8,6 +8,8 @@ import com.habit.app.data.local.DietPhotoEntity
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.data.local.MealRecordEntity
 import com.habit.app.data.local.toDomain
+import com.habit.app.data.local.toEntity
+import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealRecordDraft
@@ -38,8 +40,21 @@ class RoomDietRepository(
     override suspend fun save(id: Long?, draft: MealRecordDraft): Long = database.withTransaction {
         val normalized = validate(draft)
         val now = clock.millis()
-        val calories = calculateCalories(normalized.foodItems, normalized.manualFinalCalories)
+        val calculated = calculateCalories(normalized.foodItems, normalized.manualFinalCalories)
         val existing = id?.let { requireNotNull(dao.getRecordEntity(it)) { "饮食记录不存在" } }
+        val existingEstimate = existing?.let { dao.getCalorieEstimate(it.id) }
+        val attachedEstimate = normalized.aiCalorieEstimate?.takeIf { normalized.recordType == DietRecordType.MEAL }
+        val calories = calculated.copy(
+            source = when {
+                attachedEstimate != null && !attachedEstimate.wasModified -> CalorieSource.AI_ESTIMATE
+                attachedEstimate != null -> CalorieSource.MANUAL
+                existingEstimate != null && (
+                    existingEstimate.wasModified || existingEstimate.adoptedKcal != calculated.finalCalories
+                    ) -> CalorieSource.MANUAL
+                existingEstimate != null -> CalorieSource.AI_ESTIMATE
+                else -> calculated.source
+            },
+        )
         val entity = MealRecordEntity(
             id = existing?.id ?: 0,
             recordType = normalized.recordType.name,
@@ -107,6 +122,20 @@ class RoomDietRepository(
                 createdAt = now,
             )
         })
+        if (attachedEstimate != null) {
+            dao.deleteCalorieEstimate(recordId)
+            dao.insertCalorieEstimate(attachedEstimate.toEntity(recordId))
+        } else if (existingEstimate != null && normalized.recordType == DietRecordType.MEAL) {
+            val savedCalories = requireNotNull(calories.finalCalories) { "AI evidence requires final calories" }
+            dao.insertCalorieEstimate(
+                existingEstimate.copy(
+                    adoptedKcal = savedCalories,
+                    wasModified = existingEstimate.wasModified || existingEstimate.adoptedKcal != savedCalories,
+                ),
+            )
+        } else if (existingEstimate != null) {
+            dao.deleteCalorieEstimate(recordId)
+        }
         recordId
     }
 
@@ -147,6 +176,7 @@ class RoomDietRepository(
             beverage = drink,
             note = draft.note.trim(),
             dietCategoryId = draft.dietCategoryId.takeIf { it > 0 } ?: defaultDietCategoryId(draft),
+            aiCalorieEstimate = draft.aiCalorieEstimate?.takeIf { draft.recordType == DietRecordType.MEAL },
         )
     }
 

@@ -3,6 +3,7 @@ package com.habit.app.data.local
 import androidx.room.Dao
 import androidx.room.Embedded
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
@@ -19,6 +20,8 @@ data class MealRecordWithDetails(
     val toppings: List<BeverageToppingEntity>,
     @Relation(parentColumn = "id", entityColumn = "mealRecordId")
     val photos: List<DietPhotoEntity>,
+    @Relation(parentColumn = "id", entityColumn = "mealRecordId")
+    val aiCalorieEstimate: AiCalorieEstimateEntity?,
 )
 
 data class DietTemplateWithDetails(
@@ -85,6 +88,15 @@ interface DietDao {
 
     @Query("SELECT relativePath FROM diet_photos")
     suspend fun getAllPhotoPaths(): List<String>
+
+    @Query("SELECT * FROM ai_calorie_estimates WHERE mealRecordId = :recordId")
+    suspend fun getCalorieEstimate(recordId: Long): AiCalorieEstimateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCalorieEstimate(estimate: AiCalorieEstimateEntity)
+
+    @Query("DELETE FROM ai_calorie_estimates WHERE mealRecordId = :recordId")
+    suspend fun deleteCalorieEstimate(recordId: Long)
 
     @Transaction
     @Query("SELECT * FROM diet_templates ORDER BY recordType, sortOrder, id")

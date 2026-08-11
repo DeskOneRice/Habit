@@ -18,6 +18,10 @@ import kotlinx.coroutines.withContext
 
 const val MAX_PREPARED_AI_IMAGE_BYTES = 6L * 1024 * 1024
 
+interface CalorieImagePreparer {
+    suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage>
+}
+
 class PreparedAiImage internal constructor(
     val file: File,
     val mimeType: String = "image/jpeg",
@@ -49,8 +53,8 @@ class CalorieEstimateImagePreparer internal constructor(
     },
     private val ownerFactory: (File) -> PreparedAiImage = { PreparedAiImage(it) },
     private val rawFileDelete: (File) -> Boolean = { it.delete() },
-) {
-    suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage> {
+) : CalorieImagePreparer {
+    override suspend fun prepare(sourceFiles: List<File>): List<PreparedAiImage> {
         val prepared = mutableListOf<PreparedAiImage>()
         var delivered = false
         var pendingFailure: Throwable? = null

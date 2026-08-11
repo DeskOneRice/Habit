@@ -17,6 +17,7 @@ import com.habit.app.domain.model.FoodItem
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.model.AiCalorieEstimate
+import com.habit.app.domain.model.AiCalorieEstimateDraft
 import com.habit.app.domain.model.AiCalorieItemEstimate
 import com.habit.app.domain.model.AiFeature
 import com.habit.app.domain.model.AiFeatureBinding
@@ -152,6 +153,7 @@ fun MealRecordWithDetails.toDomain(): MealRecord = MealRecord(
         DietPhoto(it.id, it.relativePath, it.sortOrder)
     },
     dietCategoryId = record.dietCategoryId,
+    aiCalorieEstimate = aiCalorieEstimate?.toDomain(),
 )
 
 fun DietTemplateWithDetails.toDomain(): DietTemplate {
@@ -187,6 +189,7 @@ fun DietTemplateWithDetails.toDomain(): DietTemplate {
                 DietPhoto(it.id, it.relativePath, it.sortOrder)
             },
             dietCategoryId = template.dietCategoryId,
+            aiCalorieEstimate = null,
         ),
         photos = photos.sortedBy(DietPhotoEntity::sortOrder).map {
             DietPhoto(it.id, it.relativePath, it.sortOrder)
@@ -280,6 +283,20 @@ fun AiCalorieEstimateEntity.toDomain(): AiCalorieEstimate = AiCalorieEstimate(
 )
 
 fun AiCalorieEstimate.toEntity(): AiCalorieEstimateEntity = AiCalorieEstimateEntity(
+    mealRecordId = mealRecordId,
+    generatedAt = generatedAt,
+    modelNameSnapshot = modelNameSnapshot,
+    modelIdSnapshot = modelIdSnapshot,
+    itemsJson = items.toCalorieItemsJson(),
+    totalMinKcal = totalMinKcal,
+    totalMaxKcal = totalMaxKcal,
+    suggestedKcal = suggestedKcal,
+    adoptedKcal = adoptedKcal,
+    wasModified = wasModified,
+    accuracyNote = accuracyNote,
+)
+
+fun AiCalorieEstimateDraft.toEntity(mealRecordId: Long): AiCalorieEstimateEntity = AiCalorieEstimateEntity(
     mealRecordId = mealRecordId,
     generatedAt = generatedAt,
     modelNameSnapshot = modelNameSnapshot,

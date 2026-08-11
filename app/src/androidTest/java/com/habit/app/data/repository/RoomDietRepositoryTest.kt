@@ -10,6 +10,8 @@ import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecordDraft
 import com.habit.app.domain.model.MealType
+import com.habit.app.domain.model.AiCalorieEstimateDraft
+import com.habit.app.domain.model.AiCalorieItemEstimate
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -18,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,14 +80,93 @@ class RoomDietRepositoryTest {
                 cupCount = 2,
             ),
             note = "",
+            aiCalorieEstimate = estimate("vision-1", 260),
         )
 
         val id = repository.save(null, draft)
         val saved = repository.observeRecord(id).first()!!
+        val beverage = requireNotNull(saved.beverage)
 
-        assertEquals(2, saved.beverage!!.cupCount)
-        assertEquals(listOf("珍珠", "椰果"), saved.beverage!!.toppings)
+        assertEquals(2, beverage.cupCount)
+        assertEquals(listOf("珍珠", "椰果"), beverage.toppings)
         assertNull(saved.mealType)
+        assertNull(saved.aiCalorieEstimate)
+    }
+
+    @Test
+    fun saveAndManualEditRetainsMealAiEvidenceWithModifiedAdoption() = runTest {
+        val estimate = AiCalorieEstimateDraft(
+            generatedAt = 300,
+            modelNameSnapshot = "Vision",
+            modelIdSnapshot = "vision-1",
+            items = listOf(AiCalorieItemEstimate("rice", "1 bowl", 400, 600)),
+            totalMinKcal = 400,
+            totalMaxKcal = 600,
+            suggestedKcal = 500,
+            adoptedKcal = 500,
+            wasModified = false,
+            accuracyNote = "Approximate",
+        )
+        val id = repository.save(null, mealDraft("rice", 500).copy(aiCalorieEstimate = estimate))
+        repository.save(id, mealDraft("rice", 540))
+
+        val saved = repository.observeRecord(id).first()!!
+        val savedEstimate = requireNotNull(saved.aiCalorieEstimate)
+
+        assertEquals(540, saved.finalCalories)
+        assertEquals(540, savedEstimate.adoptedKcal)
+        assertEquals(true, savedEstimate.wasModified)
+    }
+
+    @Test
+    fun savingNewMealAiEstimateReplacesPreviousEvidence() = runTest {
+        val id = repository.save(
+            null,
+            mealDraft("rice", 500).copy(aiCalorieEstimate = estimate("vision-1", 500)),
+        )
+
+        repository.save(
+            id,
+            mealDraft("noodles", 620).copy(aiCalorieEstimate = estimate("vision-2", 620)),
+        )
+
+        val saved = repository.observeRecord(id).first()!!
+        val savedEstimate = requireNotNull(saved.aiCalorieEstimate)
+        assertEquals("noodles", saved.description)
+        assertEquals("vision-2", savedEstimate.modelIdSnapshot)
+        assertEquals(620, savedEstimate.adoptedKcal)
+    }
+
+    @Test
+    fun failedAiEvidenceReplacementRollsBackMealAndPreviousEvidence() = runTest {
+        val id = repository.save(
+            null,
+            mealDraft("before", 500).copy(aiCalorieEstimate = estimate("vision-1", 500)),
+        )
+        database.openHelper.writableDatabase.execSQL(
+            """
+                CREATE TRIGGER fail_ai_estimate_insert
+                BEFORE INSERT ON ai_calorie_estimates
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced estimate failure');
+                END
+            """.trimIndent(),
+        )
+
+        try {
+            repository.save(
+                id,
+                mealDraft("after", 620).copy(aiCalorieEstimate = estimate("vision-2", 620)),
+            )
+            fail("Expected the SQLite trigger to abort AI evidence replacement")
+        } catch (_: Exception) {
+            // The real SQLite failure is the behavior under test.
+        }
+
+        val saved = repository.observeRecord(id).first()!!
+        assertEquals("before", saved.description)
+        assertEquals(500, saved.finalCalories)
+        assertEquals("vision-1", saved.aiCalorieEstimate!!.modelIdSnapshot)
     }
 
     private fun mealDraft(name: String, calories: Int) = MealRecordDraft(
@@ -97,5 +179,18 @@ class RoomDietRepositoryTest {
         manualFinalCalories = null,
         beverage = null,
         note = "",
+    )
+
+    private fun estimate(modelId: String, calories: Int) = AiCalorieEstimateDraft(
+        generatedAt = 300,
+        modelNameSnapshot = "Vision",
+        modelIdSnapshot = modelId,
+        items = listOf(AiCalorieItemEstimate("rice", "1 bowl", calories, calories)),
+        totalMinKcal = calories,
+        totalMaxKcal = calories,
+        suggestedKcal = calories,
+        adoptedKcal = calories,
+        wasModified = false,
+        accuracyNote = "Approximate",
     )
 }

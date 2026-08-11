@@ -9,6 +9,7 @@ import com.habit.app.BuildConfig
 import com.habit.app.data.ai.AiSecretStore
 import com.habit.app.data.ai.AndroidKeystoreAiSecretStore
 import com.habit.app.data.ai.AiCompletionClient
+import com.habit.app.data.ai.CalorieEstimateImagePreparer
 import com.habit.app.data.ai.OpenAiCompatibleClient
 import com.habit.app.data.ai.UrlConnectionAiHttpTransport
 import com.habit.app.data.local.HabitDatabase
@@ -57,6 +58,7 @@ import com.habit.app.ui.workbench.WeeklyInsightSummary
 import com.habit.app.ui.workbench.WeeklyInsightSavedData
 import com.habit.app.ui.workbench.buildWeeklyInsightSummary
 import java.time.Clock
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -98,6 +100,9 @@ class AppContainer(
     val aiWeeklyReportRepository: AiWeeklyReportRepository = RoomAiWeeklyReportRepository(database, clock)
     val aiSecretStore: AiSecretStore = AndroidKeystoreAiSecretStore(applicationContext)
     val aiCompletionClient: AiCompletionClient = OpenAiCompatibleClient(UrlConnectionAiHttpTransport())
+    val calorieEstimateImagePreparer = CalorieEstimateImagePreparer(
+        temporaryDirectory = File(applicationContext.cacheDir, "ai-calorie-images"),
+    )
     internal val aiModelOperationCoordinator = AiModelOperationCoordinator()
     val weeklyReportInputBuilder = WeeklyReportInputBuilder(
         calendarRepository = calendarRepository,

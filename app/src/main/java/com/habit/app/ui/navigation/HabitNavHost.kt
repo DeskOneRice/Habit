@@ -458,6 +458,11 @@ private class DietEditorFactory(
             templateId = templateId,
             templateRepository = container.dietTemplateRepository,
             dietCategoryRepository = container.dietCategoryRepository,
+            modelRepository = container.aiModelRepository,
+            secretStore = container.aiSecretStore,
+            client = container.aiCompletionClient,
+            imagePreparer = container.calorieEstimateImagePreparer,
+            coordinator = container.aiModelOperationCoordinator,
         ) as T
 }
 
