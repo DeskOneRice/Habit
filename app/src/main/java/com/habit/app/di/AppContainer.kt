@@ -146,7 +146,7 @@ class AppContainer(
         coordinator = aiModelOperationCoordinator,
     )
     private val backupDocumentStore = AndroidBackupDocumentStore(applicationContext)
-    private val roomBackupRepository = RoomBackupRepository(database)
+    private val roomBackupRepository = RoomBackupRepository(database, aiSecretStore)
     val backupOperations = HabitBackupService(
         context = applicationContext,
         roomRepository = roomBackupRepository,

@@ -1,6 +1,7 @@
 package com.habit.app.data.backup
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,6 +127,108 @@ class HabitBackupCodecTest {
 
         assertEquals(source, decoded)
     }
+
+    @Test
+    fun schemaFourBackupDecodesWithEmptyAiCollections() {
+        val legacy = HabitBackupCodec.encode(sampleBackup())
+            .replace(Regex("\"schemaVersion\":\\d+"), "\"schemaVersion\":4")
+            .replace(Regex(",\"aiModelConfigs\":\\[.*?]"), "")
+            .replace(Regex(",\"aiFeatureBindings\":\\[.*?]"), "")
+            .replace(Regex(",\"aiWeeklyReports\":\\[.*?]"), "")
+            .replace(Regex(",\"aiCalorieEstimates\":\\[.*?]"), "")
+
+        val decoded = HabitBackupCodec.decode(legacy)
+
+        assertEquals(4, decoded.schemaVersion)
+        assertTrue(decoded.aiModelConfigs.isEmpty())
+        assertTrue(decoded.aiFeatureBindings.isEmpty())
+        assertTrue(decoded.aiWeeklyReports.isEmpty())
+        assertTrue(decoded.aiCalorieEstimates.isEmpty())
+    }
+
+    @Test
+    fun schemaFiveRoundTripPreservesAiMetadata() {
+        val source = sampleBackup().copy(
+            aiModelConfigs = listOf(sampleAiModel()),
+            aiFeatureBindings = listOf(BackupAiFeatureBinding("WEEKLY_REPORT", 41, 420)),
+            aiWeeklyReports = listOf(sampleAiReport()),
+            aiCalorieEstimates = listOf(sampleAiEstimate()),
+            mealRecords = listOf(
+                BackupMealRecord(8, "MEAL", "LUNCH", 200, 20, "午餐", null, 520, "AI_ESTIMATE", "", 100, 120),
+            ),
+        )
+
+        val decoded = HabitBackupCodec.decode(HabitBackupCodec.encode(source))
+
+        assertEquals(source, decoded)
+    }
+
+    @Test
+    fun schemaFiveEncodingNeverContainsSecretMaterial() {
+        val sentinelKey = "sk-HABIT-SENTINEL-NEVER-EXPORT"
+        val encoded = HabitBackupCodec.encode(
+            sampleBackup().copy(
+                aiModelConfigs = listOf(sampleAiModel()),
+                aiFeatureBindings = listOf(BackupAiFeatureBinding("WEEKLY_REPORT", 41, 420)),
+            ),
+        )
+        val lowercase = encoded.lowercase()
+
+        assertFalse(encoded.contains(sentinelKey))
+        assertFalse(lowercase.contains("apikey"))
+        assertFalse(lowercase.contains("authorization"))
+        assertFalse(lowercase.contains("ciphertext"))
+    }
+
+    private fun sampleAiModel() = BackupAiModelConfig(
+        id = 41,
+        externalId = "model-external-41",
+        name = "学习助手",
+        baseUrl = "https://api.example.com/v1",
+        modelId = "vision-model",
+        supportsText = true,
+        supportsVision = true,
+        allowInsecureHttp = false,
+        enabled = true,
+        lastTestedAt = 410,
+        lastTestStatus = "PASSED",
+        lastTestMessage = "连接正常",
+        createdAt = 400,
+        updatedAt = 420,
+    )
+
+    private fun sampleAiReport() = BackupAiWeeklyReport(
+        id = 51,
+        startEpochDay = 20_300,
+        endEpochDay = 20_306,
+        generatedAt = 510,
+        modelNameSnapshot = "学习助手",
+        modelIdSnapshot = "vision-model",
+        title = "本周状态",
+        overview = "保持稳定",
+        habitAnalysis = "完成率提升",
+        dietAnalysis = "饮食规律",
+        correlationFinding = "早睡后更稳定",
+        suggestionsJson = "[\"继续保持\"]",
+        cautionsJson = "[]",
+        coverageJson = "{\"scheduledHabitCount\":7}",
+        createdAt = 500,
+        updatedAt = 520,
+    )
+
+    private fun sampleAiEstimate() = BackupAiCalorieEstimate(
+        mealRecordId = 8,
+        generatedAt = 610,
+        modelNameSnapshot = "学习助手",
+        modelIdSnapshot = "vision-model",
+        itemsJson = "[{\"name\":\"米饭\",\"minKcal\":180,\"maxKcal\":230}]",
+        totalMinKcal = 450,
+        totalMaxKcal = 590,
+        suggestedKcal = 520,
+        adoptedKcal = 520,
+        wasModified = false,
+        accuracyNote = "图片估算，仅供参考",
+    )
 
     private fun sampleBackup() = HabitBackup(
         appVersion = "0.2.1",

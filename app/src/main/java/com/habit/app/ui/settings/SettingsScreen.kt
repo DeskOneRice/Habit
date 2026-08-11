@@ -141,7 +141,8 @@ fun SettingsScreen(
                     "备份时间：${formatBackupTime(preview.backup.exportedAt)}\n" +
                         "${preview.categories} 个分类 · ${preview.habits} 个习惯 · ${preview.checkIns} 条打卡\n" +
                         "${preview.mealRecords} 条饮食 · ${preview.photos} 张照片" +
-                        (if (preview.skippedPhotoCount > 0) "（缺失 ${preview.skippedPhotoCount} 张）\n\n" else "\n\n") +
+                        (if (preview.skippedPhotoCount > 0) "（缺失 ${preview.skippedPhotoCount} 张）\n" else "\n") +
+                        state.importPreviewAiSummary.orEmpty() + "\n\n" +
                         "合并导入会保留双方数据；发生冲突时使用更新时间较新的数据。",
                 )
             },

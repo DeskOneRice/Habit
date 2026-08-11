@@ -23,6 +23,10 @@ object HabitBackupCodec {
             put("dietTemplates", buildJsonArray { backup.dietTemplates.forEach { add(it.toJson()) } })
             put("dietTemplateFoodItems", buildJsonArray { backup.dietTemplateFoodItems.forEach { add(it.toJson()) } })
             put("dietTemplateToppings", buildJsonArray { backup.dietTemplateToppings.forEach { add(it.toJson()) } })
+            put("aiModelConfigs", buildJsonArray { backup.aiModelConfigs.forEach { add(it.toJson()) } })
+            put("aiFeatureBindings", buildJsonArray { backup.aiFeatureBindings.forEach { add(it.toJson()) } })
+            put("aiWeeklyReports", buildJsonArray { backup.aiWeeklyReports.forEach { add(it.toJson()) } })
+            put("aiCalorieEstimates", buildJsonArray { backup.aiCalorieEstimates.forEach { add(it.toJson()) } })
             put("preferences", backup.preferences.toJson())
         }.toString()
     }
@@ -56,6 +60,10 @@ object HabitBackupCodec {
                 dietTemplateFoodItems = root.optionalArray("dietTemplateFoodItems").map { it.jsonObject.toDietTemplateFoodItem() },
                 dietTemplateToppings = root.optionalArray("dietTemplateToppings").map { it.jsonObject.toDietTemplateTopping() },
                 dietCategories = root.optionalArray("dietCategories").map { it.jsonObject.toDietCategory() },
+                aiModelConfigs = root.optionalArray("aiModelConfigs").map { it.jsonObject.toAiModelConfig() },
+                aiFeatureBindings = root.optionalArray("aiFeatureBindings").map { it.jsonObject.toAiFeatureBinding() },
+                aiWeeklyReports = root.optionalArray("aiWeeklyReports").map { it.jsonObject.toAiWeeklyReport() },
+                aiCalorieEstimates = root.optionalArray("aiCalorieEstimates").map { it.jsonObject.toAiCalorieEstimate() },
             )
         } catch (error: InvalidBackupException) { throw error }
         catch (error: Exception) { throw InvalidBackupException("备份字段无效", error) }
@@ -79,6 +87,12 @@ object HabitBackupCodec {
         requireUnique("饮食模板", backup.dietTemplates.map { it.id })
         requireUnique("模板食物", backup.dietTemplateFoodItems.map { it.id })
         requireUnique("模板加料", backup.dietTemplateToppings.map { it.id })
+        requireUnique("AI 模型", backup.aiModelConfigs.map { it.id })
+        requireUnique("AI 模型外部标识", backup.aiModelConfigs.map { it.externalId })
+        requireUnique("AI 功能绑定", backup.aiFeatureBindings.map { it.feature })
+        requireUnique("AI 周报", backup.aiWeeklyReports.map { it.id })
+        requireUnique("AI 周报周次", backup.aiWeeklyReports.map { it.startEpochDay })
+        requireUnique("AI 热量依据", backup.aiCalorieEstimates.map { it.mealRecordId })
         val categoryIds = backup.categories.mapTo(mutableSetOf()) { it.id }
         val dietCategoriesById = backup.dietCategories.associateBy { it.id }
         val habitIds = backup.habits.mapTo(mutableSetOf()) { it.id }
@@ -117,9 +131,18 @@ object HabitBackupCodec {
         ) throw InvalidBackupException("饮食记录引用了不存在或类型不匹配的分类")
         if (backup.foodItems.any { (it.calories ?: 0) < 0 }) throw InvalidBackupException("食物热量无效")
         if (backup.beverageDetails.any { it.cupCount < 1 }) throw InvalidBackupException("饮品杯数无效")
+        if (backup.aiModelConfigs.any { it.externalId.isBlank() }) {
+            throw InvalidBackupException("AI 模型外部标识无效")
+        }
+        if (backup.aiCalorieEstimates.any { estimate ->
+                estimate.mealRecordId !in mealIds ||
+                    estimate.totalMinKcal < 0 || estimate.totalMaxKcal < estimate.totalMinKcal ||
+                    estimate.suggestedKcal < 0 || estimate.adoptedKcal < 0
+            }
+        ) throw InvalidBackupException("AI 热量依据无效")
     }
 
-    private fun requireUnique(label: String, ids: List<Long>) {
+    private fun <T> requireUnique(label: String, ids: List<T>) {
         if (ids.distinct().size != ids.size) throw InvalidBackupException("$label ID 重复")
     }
 }
@@ -182,6 +205,28 @@ private fun BackupDietTemplateTopping.toJson() = buildJsonObject {
     put("id", id); put("templateId", templateId); put("name", name); put("sortOrder", sortOrder)
     put("createdAt", createdAt); put("updatedAt", updatedAt)
 }
+private fun BackupAiModelConfig.toJson() = buildJsonObject {
+    put("id", id); put("externalId", externalId); put("name", name); put("baseUrl", baseUrl); put("modelId", modelId)
+    put("supportsText", supportsText); put("supportsVision", supportsVision); put("allowInsecureHttp", allowInsecureHttp)
+    put("enabled", enabled); putNullable("lastTestedAt", lastTestedAt); put("lastTestStatus", lastTestStatus)
+    put("lastTestMessage", lastTestMessage); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun BackupAiFeatureBinding.toJson() = buildJsonObject {
+    put("feature", feature); putNullable("modelConfigId", modelConfigId); put("updatedAt", updatedAt)
+}
+private fun BackupAiWeeklyReport.toJson() = buildJsonObject {
+    put("id", id); put("startEpochDay", startEpochDay); put("endEpochDay", endEpochDay); put("generatedAt", generatedAt)
+    put("modelNameSnapshot", modelNameSnapshot); put("modelIdSnapshot", modelIdSnapshot); put("title", title)
+    put("overview", overview); put("habitAnalysis", habitAnalysis); put("dietAnalysis", dietAnalysis)
+    put("correlationFinding", correlationFinding); put("suggestionsJson", suggestionsJson); put("cautionsJson", cautionsJson)
+    put("coverageJson", coverageJson); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun BackupAiCalorieEstimate.toJson() = buildJsonObject {
+    put("mealRecordId", mealRecordId); put("generatedAt", generatedAt); put("modelNameSnapshot", modelNameSnapshot)
+    put("modelIdSnapshot", modelIdSnapshot); put("itemsJson", itemsJson); put("totalMinKcal", totalMinKcal)
+    put("totalMaxKcal", totalMaxKcal); put("suggestedKcal", suggestedKcal); put("adoptedKcal", adoptedKcal)
+    put("wasModified", wasModified); put("accuracyNote", accuracyNote)
+}
 private fun BackupPreferences.toJson() = buildJsonObject {
     put("themeId", themeId)
     put("recentEmojiKeys", buildJsonArray { recentEmojiKeys.forEach { add(JsonPrimitive(it)) } })
@@ -207,6 +252,27 @@ private fun JsonObject.toDietTemplate() = BackupDietTemplate(
 )
 private fun JsonObject.toDietTemplateFoodItem() = BackupDietTemplateFoodItem(requiredLong("id"), requiredLong("templateId"), requiredString("name"), nullableString("portionText"), nullableInt("calories"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
 private fun JsonObject.toDietTemplateTopping() = BackupDietTemplateTopping(requiredLong("id"), requiredLong("templateId"), requiredString("name"), requiredInt("sortOrder"), requiredLong("createdAt"), requiredLong("updatedAt"))
+private fun JsonObject.toAiModelConfig() = BackupAiModelConfig(
+    requiredLong("id"), requiredString("externalId"), requiredString("name"), requiredString("baseUrl"), requiredString("modelId"),
+    requiredBoolean("supportsText"), requiredBoolean("supportsVision"), requiredBoolean("allowInsecureHttp"), requiredBoolean("enabled"),
+    nullableLong("lastTestedAt"), requiredString("lastTestStatus"), requiredString("lastTestMessage"), requiredLong("createdAt"),
+    requiredLong("updatedAt"),
+)
+private fun JsonObject.toAiFeatureBinding() = BackupAiFeatureBinding(
+    requiredString("feature"), nullableLong("modelConfigId"), requiredLong("updatedAt"),
+)
+private fun JsonObject.toAiWeeklyReport() = BackupAiWeeklyReport(
+    requiredLong("id"), requiredLong("startEpochDay"), requiredLong("endEpochDay"), requiredLong("generatedAt"),
+    requiredString("modelNameSnapshot"), requiredString("modelIdSnapshot"), requiredString("title"), requiredString("overview"),
+    requiredString("habitAnalysis"), requiredString("dietAnalysis"), requiredString("correlationFinding"),
+    requiredString("suggestionsJson"), requiredString("cautionsJson"), requiredString("coverageJson"),
+    requiredLong("createdAt"), requiredLong("updatedAt"),
+)
+private fun JsonObject.toAiCalorieEstimate() = BackupAiCalorieEstimate(
+    requiredLong("mealRecordId"), requiredLong("generatedAt"), requiredString("modelNameSnapshot"),
+    requiredString("modelIdSnapshot"), requiredString("itemsJson"), requiredInt("totalMinKcal"), requiredInt("totalMaxKcal"),
+    requiredInt("suggestedKcal"), requiredInt("adoptedKcal"), requiredBoolean("wasModified"), requiredString("accuracyNote"),
+)
 private fun JsonObject.toPreferences(version: Int) = BackupPreferences(
     requiredString("themeId"), requiredArray("recentEmojiKeys").map { it.jsonPrimitive.content },
     if (version >= 2) optionalBoolean("dailyCalorieGoalEnabled") ?: false else false,

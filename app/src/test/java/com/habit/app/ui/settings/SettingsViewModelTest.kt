@@ -3,11 +3,16 @@ package com.habit.app.ui.settings
 import com.habit.app.ui.theme.HabitThemeId
 import com.habit.app.ui.theme.ThemeRepository
 import com.habit.app.data.backup.BackupOperations
+import com.habit.app.data.backup.BackupAiCalorieEstimate
+import com.habit.app.data.backup.BackupAiModelConfig
+import com.habit.app.data.backup.BackupAiWeeklyReport
+import com.habit.app.data.backup.BackupPreferences
 import com.habit.app.data.backup.ExportResult
 import com.habit.app.data.backup.FolderChangeResult
 import com.habit.app.data.backup.ImportMode
 import com.habit.app.data.backup.ImportPreview
 import com.habit.app.data.backup.ImportResult
+import com.habit.app.data.backup.HabitBackup
 import com.habit.app.data.preferences.DEFAULT_BACKUP_LABEL
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +94,48 @@ class SettingsViewModelTest {
         assertEquals(DEFAULT_BACKUP_LABEL, viewModel.state.value.backupLocation)
         assertEquals("迁移失败，旧备份未删除", viewModel.state.value.message)
     }
+
+    @Test
+    fun importPreviewShowsAiCountsAndExplainsThatKeysAreExcluded() = runTest(dispatcher) {
+        val preview = ImportPreview(
+            HabitBackup(
+                appVersion = "0.6.0",
+                exportedAt = 1,
+                preferencesUpdatedAt = 1,
+                categories = emptyList(),
+                habits = emptyList(),
+                checkIns = emptyList(),
+                preferences = BackupPreferences("sky_blue", emptyList()),
+                aiModelConfigs = listOf(aiModel(1), aiModel(2)),
+                aiWeeklyReports = listOf(aiReport()),
+                aiCalorieEstimates = listOf(aiEstimate(1), aiEstimate(2), aiEstimate(3)),
+            ),
+        )
+        val backup = RecordingBackupOperations(previewResult = preview)
+        val viewModel = SettingsViewModel(RecordingThemeRepository(null), backup)
+
+        viewModel.loadImport("content://backup")
+        advanceUntilIdle()
+
+        assertEquals(
+            "2 个模型配置 · 1 份 AI 周报 · 3 条热量依据\nAPI Key 不包含在备份中",
+            viewModel.state.value.importPreviewAiSummary,
+        )
+    }
+
+    private fun aiModel(id: Long) = BackupAiModelConfig(
+        id, "external-$id", "模型$id", "https://api.example.com/v1", "model-$id", true, true,
+        false, true, null, "UNTESTED", "", 1, 1,
+    )
+
+    private fun aiReport() = BackupAiWeeklyReport(
+        1, 20_300, 20_306, 10, "模型", "model", "周报", "概览", "习惯", "饮食", "关联",
+        "[]", "[]", "{}", 1, 10,
+    )
+
+    private fun aiEstimate(mealRecordId: Long) = BackupAiCalorieEstimate(
+        mealRecordId, 10, "模型", "model", "[]", 100, 200, 150, 150, false, "仅供参考",
+    )
 }
 
 private class RecordingThemeRepository(
@@ -104,13 +151,14 @@ private class RecordingThemeRepository(
 
 private class RecordingBackupOperations(
     private val folderFailure: Boolean = false,
+    private val previewResult: ImportPreview? = null,
 ) : BackupOperations {
     override val backupLocation = MutableStateFlow(DEFAULT_BACKUP_LABEL)
 
     override suspend fun export(): ExportResult =
         ExportResult("Habit-Backup-test.habitbackup.json", 1, 1, 1)
 
-    override suspend fun preview(uri: String): ImportPreview = error("not used")
+    override suspend fun preview(uri: String): ImportPreview = checkNotNull(previewResult)
 
     override suspend fun import(preview: ImportPreview, mode: ImportMode): ImportResult = error("not used")
 

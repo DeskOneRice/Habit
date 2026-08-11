@@ -42,6 +42,9 @@ data class ImportPreview(
     val checkIns: Int get() = backup.checkIns.size
     val mealRecords: Int get() = backup.mealRecords.size
     val photos: Int get() = backup.dietPhotos.size
+    val aiModelConfigs: Int get() = backup.aiModelConfigs.size
+    val aiWeeklyReports: Int get() = backup.aiWeeklyReports.size
+    val aiCalorieEstimates: Int get() = backup.aiCalorieEstimates.size
 }
 
 data class ImportResult(
@@ -105,6 +108,10 @@ class HabitBackupService(
             dietTemplates = database.dietTemplates,
             dietTemplateFoodItems = database.dietTemplateFoodItems,
             dietTemplateToppings = database.dietTemplateToppings,
+            aiModelConfigs = database.aiModelConfigs,
+            aiFeatureBindings = database.aiFeatureBindings,
+            aiWeeklyReports = database.aiWeeklyReports,
+            aiCalorieEstimates = database.aiCalorieEstimates,
             preferences = preferenceSnapshot.content.preferences,
         )
         val fileName = backupFileName(now)

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -40,6 +41,34 @@ class HabitBackupArchiveTest {
         assertThrows(InvalidBackupException::class.java) {
             HabitBackupArchive.read(ByteArrayInputStream(output.toByteArray()), File(System.getProperty("java.io.tmpdir"), "habit-traversal"))
         }
+    }
+
+    @Test
+    fun schemaFiveArchiveContainsAiMetadataButNoSecretFields() {
+        val backup = emptyBackup().copy(
+            aiModelConfigs = listOf(
+                BackupAiModelConfig(
+                    1, "external-1", "模型", "https://api.example.com/v1", "model", true, true,
+                    false, true, 10, "PASSED", "ok", 1, 10,
+                ),
+            ),
+            aiFeatureBindings = listOf(BackupAiFeatureBinding("WEEKLY_REPORT", 1, 10)),
+        )
+        val output = ByteArrayOutputStream()
+
+        HabitBackupArchive.write(output, backup) { null }
+        val metadata = java.util.zip.ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+            generateSequence { zip.nextEntry }
+                .first { it.name == "backup.json" }
+            zip.readBytes().decodeToString()
+        }
+        val decoded = HabitBackupCodec.decode(metadata)
+        val lowercase = metadata.lowercase()
+
+        assertEquals("external-1", decoded.aiModelConfigs.single().externalId)
+        assertFalse(lowercase.contains("apikey"))
+        assertFalse(lowercase.contains("authorization"))
+        assertFalse(lowercase.contains("ciphertext"))
     }
 
     private fun emptyBackup() = HabitBackup(

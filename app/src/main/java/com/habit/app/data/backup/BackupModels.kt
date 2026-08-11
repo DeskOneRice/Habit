@@ -4,7 +4,7 @@ import com.habit.app.domain.model.DIET_CATEGORY_PRESETS
 import com.habit.app.domain.model.DietCategoryScope
 
 const val HABIT_BACKUP_FORMAT = "habit-backup"
-const val HABIT_BACKUP_SCHEMA_VERSION = 4
+const val HABIT_BACKUP_SCHEMA_VERSION = 5
 
 data class HabitBackup(
     val format: String = HABIT_BACKUP_FORMAT,
@@ -25,6 +25,66 @@ data class HabitBackup(
     val dietTemplateFoodItems: List<BackupDietTemplateFoodItem> = emptyList(),
     val dietTemplateToppings: List<BackupDietTemplateTopping> = emptyList(),
     val dietCategories: List<BackupDietCategory> = emptyList(),
+    val aiModelConfigs: List<BackupAiModelConfig> = emptyList(),
+    val aiFeatureBindings: List<BackupAiFeatureBinding> = emptyList(),
+    val aiWeeklyReports: List<BackupAiWeeklyReport> = emptyList(),
+    val aiCalorieEstimates: List<BackupAiCalorieEstimate> = emptyList(),
+)
+
+data class BackupAiModelConfig(
+    val id: Long,
+    val externalId: String,
+    val name: String,
+    val baseUrl: String,
+    val modelId: String,
+    val supportsText: Boolean,
+    val supportsVision: Boolean,
+    val allowInsecureHttp: Boolean,
+    val enabled: Boolean,
+    val lastTestedAt: Long?,
+    val lastTestStatus: String,
+    val lastTestMessage: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class BackupAiFeatureBinding(
+    val feature: String,
+    val modelConfigId: Long?,
+    val updatedAt: Long,
+)
+
+data class BackupAiWeeklyReport(
+    val id: Long,
+    val startEpochDay: Long,
+    val endEpochDay: Long,
+    val generatedAt: Long,
+    val modelNameSnapshot: String,
+    val modelIdSnapshot: String,
+    val title: String,
+    val overview: String,
+    val habitAnalysis: String,
+    val dietAnalysis: String,
+    val correlationFinding: String,
+    val suggestionsJson: String,
+    val cautionsJson: String,
+    val coverageJson: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class BackupAiCalorieEstimate(
+    val mealRecordId: Long,
+    val generatedAt: Long,
+    val modelNameSnapshot: String,
+    val modelIdSnapshot: String,
+    val itemsJson: String,
+    val totalMinKcal: Int,
+    val totalMaxKcal: Int,
+    val suggestedKcal: Int,
+    val adoptedKcal: Int,
+    val wasModified: Boolean,
+    val accuracyNote: String,
 )
 
 data class BackupDietCategory(

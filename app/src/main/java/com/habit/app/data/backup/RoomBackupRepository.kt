@@ -1,6 +1,11 @@
 package com.habit.app.data.backup
 
 import androidx.room.withTransaction
+import com.habit.app.data.ai.AiSecretStore
+import com.habit.app.data.local.AiCalorieEstimateEntity
+import com.habit.app.data.local.AiFeatureBindingEntity
+import com.habit.app.data.local.AiModelConfigEntity
+import com.habit.app.data.local.AiWeeklyReportEntity
 import com.habit.app.data.local.CategoryEntity
 import com.habit.app.data.local.CheckInEntity
 import com.habit.app.data.local.HabitDatabase
@@ -30,6 +35,10 @@ data class BackupDatabaseSnapshot(
     val dietTemplateFoodItems: List<BackupDietTemplateFoodItem>,
     val dietTemplateToppings: List<BackupDietTemplateTopping>,
     val dietCategories: List<BackupDietCategory>,
+    val aiModelConfigs: List<BackupAiModelConfig> = emptyList(),
+    val aiFeatureBindings: List<BackupAiFeatureBinding> = emptyList(),
+    val aiWeeklyReports: List<BackupAiWeeklyReport> = emptyList(),
+    val aiCalorieEstimates: List<BackupAiCalorieEstimate> = emptyList(),
 )
 
 data class ImportSummary(
@@ -40,7 +49,10 @@ data class ImportSummary(
     val beverages: Int = 0,
 )
 
-class RoomBackupRepository(private val database: HabitDatabase) {
+class RoomBackupRepository(
+    private val database: HabitDatabase,
+    private val secretStore: AiSecretStore,
+) {
     suspend fun referencedPhotoPaths(): Set<String> = database.dietDao().getAllPhotoPaths().toSet()
     suspend fun exportDatabase(): BackupDatabaseSnapshot = database.withTransaction {
         val diet = database.dietDao().getAll()
@@ -58,39 +70,59 @@ class RoomBackupRepository(private val database: HabitDatabase) {
             dietTemplateFoodItems = templates.flatMap { it.foodItems }.map(DietTemplateFoodItemEntity::toBackup),
             dietTemplateToppings = templates.flatMap { it.toppings }.map(DietTemplateToppingEntity::toBackup),
             dietCategories = database.dietCategoryDao().getAll().map(DietCategoryEntity::toBackup),
+            aiModelConfigs = database.aiDao().getModels().map(AiModelConfigEntity::toBackup),
+            aiFeatureBindings = database.aiDao().getBindings().map(AiFeatureBindingEntity::toBackup),
+            aiWeeklyReports = database.aiDao().getReports().map(AiWeeklyReportEntity::toBackup),
+            aiCalorieEstimates = diet.mapNotNull { it.aiCalorieEstimate }.map(AiCalorieEstimateEntity::toBackup),
         )
     }
 
     suspend fun importDatabase(backup: HabitBackup, mode: ImportMode): ImportSummary {
         HabitBackupCodec.validate(backup)
         val normalizedBackup = backup.normalizeDietCategories()
-        return database.withTransaction {
-            val target = when (mode) {
-                ImportMode.REPLACE -> normalizedBackup
-                ImportMode.MERGE -> {
-                    val current = exportDatabase().toHabitBackup(normalizedBackup)
-                    BackupMerger.merge(current, normalizedBackup)
+        val secretIdsToClear = normalizedBackup.aiModelConfigs.mapTo(linkedSetOf(), BackupAiModelConfig::externalId)
+        return executeSecretSafeImport(mode, secretIdsToClear, secretStore) {
+            database.withTransaction {
+                val target = when (mode) {
+                    ImportMode.REPLACE -> BackupMerger.prepareReplace(normalizedBackup).backup
+                    ImportMode.MERGE -> {
+                        val current = exportDatabase().toHabitBackup(normalizedBackup)
+                        BackupMerger.merge(current, normalizedBackup).backup
+                    }
                 }
+                database.aiDao().deleteAllBindings()
+                database.aiDao().deleteAllReports()
+                database.aiDao().deleteAllModels()
+                database.checkInDao().deleteAll()
+                database.dietDao().deleteAll()
+                database.dietDao().deleteAllTemplates()
+                database.habitDao().deleteAll()
+                database.categoryDao().deleteAll()
+                database.dietCategoryDao().deleteAll()
+                database.categoryDao().insertAll(target.categories.map(BackupCategory::toEntity))
+                database.dietCategoryDao().insertAll(target.dietCategories.map(BackupDietCategory::toEntity))
+                database.habitDao().insertAll(target.habits.map(BackupHabit::toEntity))
+                database.checkInDao().insertAll(target.checkIns.map(BackupCheckIn::toEntity))
+                database.dietDao().insertRecords(target.mealRecords.map(BackupMealRecord::toEntity))
+                database.dietDao().insertFoodItems(target.foodItems.map(BackupFoodItem::toEntity))
+                database.dietDao().insertBeverages(target.beverageDetails.map(BackupBeverageDetail::toEntity))
+                database.dietDao().insertToppings(target.beverageToppings.map(BackupBeverageTopping::toEntity))
+                database.dietDao().insertTemplates(target.dietTemplates.map(BackupDietTemplate::toEntity))
+                database.dietDao().insertTemplateFoodItems(target.dietTemplateFoodItems.map(BackupDietTemplateFoodItem::toEntity))
+                database.dietDao().insertTemplateToppings(target.dietTemplateToppings.map(BackupDietTemplateTopping::toEntity))
+                database.dietDao().insertPhotos(target.dietPhotos.map(BackupDietPhoto::toEntity))
+                target.aiModelConfigs.forEach { database.aiDao().insertModel(it.toEntity()) }
+                target.aiFeatureBindings.forEach { database.aiDao().upsertBinding(it.toEntity()) }
+                target.aiWeeklyReports.forEach { database.aiDao().insertReport(it.toEntity()) }
+                target.aiCalorieEstimates.forEach { database.aiDao().upsertCalorieEstimate(it.toEntity()) }
+                ImportSummary(
+                    target.categories.size,
+                    target.habits.size,
+                    target.checkIns.size,
+                    target.mealRecords.size,
+                    target.beverageDetails.size,
+                )
             }
-            database.checkInDao().deleteAll()
-            database.dietDao().deleteAll()
-            database.dietDao().deleteAllTemplates()
-            database.habitDao().deleteAll()
-            database.categoryDao().deleteAll()
-            database.dietCategoryDao().deleteAll()
-            database.categoryDao().insertAll(target.categories.map(BackupCategory::toEntity))
-            database.dietCategoryDao().insertAll(target.dietCategories.map(BackupDietCategory::toEntity))
-            database.habitDao().insertAll(target.habits.map(BackupHabit::toEntity))
-            database.checkInDao().insertAll(target.checkIns.map(BackupCheckIn::toEntity))
-            database.dietDao().insertRecords(target.mealRecords.map(BackupMealRecord::toEntity))
-            database.dietDao().insertFoodItems(target.foodItems.map(BackupFoodItem::toEntity))
-            database.dietDao().insertBeverages(target.beverageDetails.map(BackupBeverageDetail::toEntity))
-            database.dietDao().insertToppings(target.beverageToppings.map(BackupBeverageTopping::toEntity))
-            database.dietDao().insertTemplates(target.dietTemplates.map(BackupDietTemplate::toEntity))
-            database.dietDao().insertTemplateFoodItems(target.dietTemplateFoodItems.map(BackupDietTemplateFoodItem::toEntity))
-            database.dietDao().insertTemplateToppings(target.dietTemplateToppings.map(BackupDietTemplateTopping::toEntity))
-            database.dietDao().insertPhotos(target.dietPhotos.map(BackupDietPhoto::toEntity))
-            ImportSummary(target.categories.size, target.habits.size, target.checkIns.size, target.mealRecords.size, target.beverageDetails.size)
         }
     }
 }
@@ -108,6 +140,10 @@ private fun BackupDatabaseSnapshot.toHabitBackup(template: HabitBackup) = templa
     dietTemplateFoodItems = dietTemplateFoodItems,
     dietTemplateToppings = dietTemplateToppings,
     dietCategories = dietCategories,
+    aiModelConfigs = aiModelConfigs,
+    aiFeatureBindings = aiFeatureBindings,
+    aiWeeklyReports = aiWeeklyReports,
+    aiCalorieEstimates = aiCalorieEstimates,
 )
 
 private fun CategoryEntity.toBackup() = BackupCategory(
@@ -133,6 +169,19 @@ private fun DietPhotoEntity.toBackup() = BackupDietPhoto(id, mealRecordId, templ
 private fun DietTemplateEntity.toBackup() = BackupDietTemplate(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt, dietCategoryId)
 private fun DietTemplateFoodItemEntity.toBackup() = BackupDietTemplateFoodItem(id, templateId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun DietTemplateToppingEntity.toBackup() = BackupDietTemplateTopping(id, templateId, name, sortOrder, createdAt, updatedAt)
+private fun AiModelConfigEntity.toBackup() = BackupAiModelConfig(
+    id, externalId, name, baseUrl, modelId, supportsText, supportsVision, allowInsecureHttp, enabled,
+    lastTestedAt, lastTestStatus, lastTestMessage, createdAt, updatedAt,
+)
+private fun AiFeatureBindingEntity.toBackup() = BackupAiFeatureBinding(feature, modelConfigId, updatedAt)
+private fun AiWeeklyReportEntity.toBackup() = BackupAiWeeklyReport(
+    id, startEpochDay, endEpochDay, generatedAt, modelNameSnapshot, modelIdSnapshot, title, overview,
+    habitAnalysis, dietAnalysis, correlationFinding, suggestionsJson, cautionsJson, coverageJson, createdAt, updatedAt,
+)
+private fun AiCalorieEstimateEntity.toBackup() = BackupAiCalorieEstimate(
+    mealRecordId, generatedAt, modelNameSnapshot, modelIdSnapshot, itemsJson, totalMinKcal, totalMaxKcal,
+    suggestedKcal, adoptedKcal, wasModified, accuracyNote,
+)
 
 private fun BackupCategory.toEntity() = CategoryEntity(
     id, name, isPreset, isHidden, sortOrder, createdAt, updatedAt,
@@ -157,3 +206,30 @@ private fun BackupDietPhoto.toEntity() = DietPhotoEntity(id, mealRecordId, templ
 private fun BackupDietTemplate.toEntity() = DietTemplateEntity(id, name, recordType, mealType, description, manualFinalCalories, beverageCategory, brandOrStore, beverageName, sizeOrVolume, temperature, iceLevel, sweetness, cupCount, note, sortOrder, createdAt, updatedAt, requireNotNull(dietCategoryId))
 private fun BackupDietTemplateFoodItem.toEntity() = DietTemplateFoodItemEntity(id, templateId, name, portionText, calories, sortOrder, createdAt, updatedAt)
 private fun BackupDietTemplateTopping.toEntity() = DietTemplateToppingEntity(id, templateId, name, sortOrder, createdAt, updatedAt)
+private fun BackupAiModelConfig.toEntity() = AiModelConfigEntity(
+    id, externalId, name, baseUrl, modelId, supportsText, supportsVision, allowInsecureHttp, enabled,
+    lastTestedAt, lastTestStatus, lastTestMessage, createdAt, updatedAt,
+)
+private fun BackupAiFeatureBinding.toEntity() = AiFeatureBindingEntity(feature, modelConfigId, updatedAt)
+private fun BackupAiWeeklyReport.toEntity() = AiWeeklyReportEntity(
+    id, startEpochDay, endEpochDay, generatedAt, modelNameSnapshot, modelIdSnapshot, title, overview,
+    habitAnalysis, dietAnalysis, correlationFinding, suggestionsJson, cautionsJson, coverageJson, createdAt, updatedAt,
+)
+private fun BackupAiCalorieEstimate.toEntity() = AiCalorieEstimateEntity(
+    mealRecordId, generatedAt, modelNameSnapshot, modelIdSnapshot, itemsJson, totalMinKcal, totalMaxKcal,
+    suggestedKcal, adoptedKcal, wasModified, accuracyNote,
+)
+
+internal suspend fun <T> executeSecretSafeImport(
+    mode: ImportMode,
+    secretIdsToClear: Set<String>,
+    secretStore: AiSecretStore,
+    roomTransaction: suspend () -> T,
+): T {
+    val result = roomTransaction()
+    when (mode) {
+        ImportMode.REPLACE -> secretStore.clearAll()
+        ImportMode.MERGE -> secretIdsToClear.sorted().forEach { secretStore.remove(it) }
+    }
+    return result
+}

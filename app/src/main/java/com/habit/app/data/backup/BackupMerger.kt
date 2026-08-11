@@ -2,12 +2,30 @@ package com.habit.app.data.backup
 
 import java.util.Locale
 
+data class BackupMergeResult(
+    val backup: HabitBackup,
+    val secretIdsToClear: Set<String>,
+)
+
 object BackupMerger {
-    fun merge(current: HabitBackup, imported: HabitBackup): HabitBackup {
+    fun merge(current: HabitBackup, imported: HabitBackup): BackupMergeResult {
         HabitBackupCodec.validate(current)
         HabitBackupCodec.validate(imported)
 
-        return mergeNormalized(current.normalizeDietCategories(), imported.normalizeDietCategories())
+        return BackupMergeResult(
+            backup = mergeNormalized(current.normalizeDietCategories(), imported.normalizeDietCategories()),
+            secretIdsToClear = imported.aiModelConfigs.mapTo(linkedSetOf(), BackupAiModelConfig::externalId),
+        )
+    }
+
+    fun prepareReplace(imported: HabitBackup): BackupMergeResult {
+        HabitBackupCodec.validate(imported)
+        val normalized = imported.normalizeDietCategories().sanitizeImportedAiData()
+        HabitBackupCodec.validate(normalized)
+        return BackupMergeResult(
+            backup = normalized,
+            secretIdsToClear = imported.aiModelConfigs.mapTo(linkedSetOf(), BackupAiModelConfig::externalId),
+        )
     }
 
     private fun mergeNormalized(current: HabitBackup, imported: HabitBackup): HabitBackup {
@@ -93,6 +111,7 @@ object BackupMerger {
         )
         val diet = mergeDiet(current, importedWithMappedDietCategories)
         val quick = mergeQuickCapture(current, importedWithMappedDietCategories, diet.records)
+        val ai = mergeAi(current, importedWithMappedDietCategories, diet.importedRecordIdMap)
         val importedPreferencesAreNewer = imported.preferencesUpdatedAt > current.preferencesUpdatedAt
         return current.copy(
             schemaVersion = HABIT_BACKUP_SCHEMA_VERSION,
@@ -115,6 +134,10 @@ object BackupMerger {
             dietTemplates = quick.templates,
             dietTemplateFoodItems = quick.foodItems,
             dietTemplateToppings = quick.toppings,
+            aiModelConfigs = ai.models,
+            aiFeatureBindings = ai.bindings,
+            aiWeeklyReports = ai.reports,
+            aiCalorieEstimates = ai.estimates,
             preferences = if (importedPreferencesAreNewer) imported.preferences else current.preferences,
         )
     }
@@ -253,6 +276,7 @@ private data class MergedDiet(
     val foodItems: List<BackupFoodItem>,
     val beverages: List<BackupBeverageDetail>,
     val toppings: List<BackupBeverageTopping>,
+    val importedRecordIdMap: Map<Long, Long>,
 )
 
 private fun mergeDiet(current: HabitBackup, imported: HabitBackup): MergedDiet {
@@ -310,8 +334,111 @@ private fun mergeDiet(current: HabitBackup, imported: HabitBackup): MergedDiet {
         food.sortedBy(BackupFoodItem::id),
         beverages.sortedBy(BackupBeverageDetail::mealRecordId),
         toppings.sortedBy(BackupBeverageTopping::id),
+        recordMap,
     )
 }
+
+private data class MergedAi(
+    val models: List<BackupAiModelConfig>,
+    val bindings: List<BackupAiFeatureBinding>,
+    val reports: List<BackupAiWeeklyReport>,
+    val estimates: List<BackupAiCalorieEstimate>,
+)
+
+private fun mergeAi(
+    current: HabitBackup,
+    imported: HabitBackup,
+    importedRecordIdMap: Map<Long, Long>,
+): MergedAi {
+    val models = current.aiModelConfigs.toMutableList()
+    val usedModelIds = models.mapTo(mutableSetOf(), BackupAiModelConfig::id)
+    var nextModelId = (usedModelIds.maxOrNull() ?: 0L) + 1
+    val importedModelIdMap = mutableMapOf<Long, Long>()
+    imported.aiModelConfigs.forEach { incoming ->
+        val index = models.indexOfFirst { it.externalId == incoming.externalId }
+        if (index >= 0) {
+            val existing = models[index]
+            importedModelIdMap[incoming.id] = existing.id
+            val winner = if (incoming.updatedAt >= existing.updatedAt) incoming.copy(id = existing.id) else existing
+            models[index] = winner.markAsNeedingKey()
+        } else {
+            val targetId = availableId(incoming.id, usedModelIds) { nextModelId++ }
+            importedModelIdMap[incoming.id] = targetId
+            models += incoming.copy(id = targetId).markAsNeedingKey()
+        }
+    }
+    val validModelIds = models.mapTo(mutableSetOf(), BackupAiModelConfig::id)
+
+    val bindings = current.aiFeatureBindings
+        .map { it.copy(modelConfigId = it.modelConfigId?.takeIf(validModelIds::contains)) }
+        .toMutableList()
+    imported.aiFeatureBindings.forEach { incoming ->
+        val mapped = incoming.copy(
+            modelConfigId = incoming.modelConfigId?.let(importedModelIdMap::get),
+        )
+        val index = bindings.indexOfFirst { it.feature == incoming.feature }
+        if (index < 0) {
+            bindings += mapped
+        } else if (incoming.updatedAt >= bindings[index].updatedAt) {
+            bindings[index] = mapped
+        }
+    }
+
+    val reports = current.aiWeeklyReports.toMutableList()
+    val usedReportIds = reports.mapTo(mutableSetOf(), BackupAiWeeklyReport::id)
+    var nextReportId = (usedReportIds.maxOrNull() ?: 0L) + 1
+    imported.aiWeeklyReports.forEach { incoming ->
+        val index = reports.indexOfFirst { it.startEpochDay == incoming.startEpochDay }
+        if (index >= 0) {
+            val existing = reports[index]
+            if (incoming.updatedAt >= existing.updatedAt) reports[index] = incoming.copy(id = existing.id)
+        } else {
+            val targetId = availableId(incoming.id, usedReportIds) { nextReportId++ }
+            reports += incoming.copy(id = targetId)
+        }
+    }
+
+    val validMealIds = (current.mealRecords.map(BackupMealRecord::id) + importedRecordIdMap.values).toSet()
+    val estimates = current.aiCalorieEstimates
+        .filter { it.mealRecordId in validMealIds }
+        .toMutableList()
+    imported.aiCalorieEstimates.forEach { incoming ->
+        val targetMealId = importedRecordIdMap[incoming.mealRecordId] ?: return@forEach
+        val mapped = incoming.copy(mealRecordId = targetMealId)
+        val index = estimates.indexOfFirst { it.mealRecordId == targetMealId }
+        if (index < 0) {
+            estimates += mapped
+        } else if (incoming.generatedAt >= estimates[index].generatedAt) {
+            estimates[index] = mapped
+        }
+    }
+
+    return MergedAi(
+        models = models.sortedBy(BackupAiModelConfig::id),
+        bindings = bindings
+            .map { it.copy(modelConfigId = it.modelConfigId?.takeIf(validModelIds::contains)) }
+            .sortedBy(BackupAiFeatureBinding::feature),
+        reports = reports.sortedBy(BackupAiWeeklyReport::id),
+        estimates = estimates.sortedBy(BackupAiCalorieEstimate::mealRecordId),
+    )
+}
+
+private fun HabitBackup.sanitizeImportedAiData(): HabitBackup {
+    val validModelIds = aiModelConfigs.mapTo(mutableSetOf(), BackupAiModelConfig::id)
+    val validMealIds = mealRecords.mapTo(mutableSetOf(), BackupMealRecord::id)
+    return copy(
+        aiModelConfigs = aiModelConfigs.map(BackupAiModelConfig::markAsNeedingKey),
+        aiFeatureBindings = aiFeatureBindings.map { binding ->
+            binding.copy(modelConfigId = binding.modelConfigId?.takeIf(validModelIds::contains))
+        },
+        aiCalorieEstimates = aiCalorieEstimates.filter { it.mealRecordId in validMealIds },
+    )
+}
+
+private fun BackupAiModelConfig.markAsNeedingKey() = copy(
+    lastTestStatus = "NEEDS_KEY",
+    lastTestMessage = "",
+)
 
 private inline fun availableId(requested: Long, used: MutableSet<Long>, next: () -> Long): Long {
     if (requested > 0 && used.add(requested)) return requested

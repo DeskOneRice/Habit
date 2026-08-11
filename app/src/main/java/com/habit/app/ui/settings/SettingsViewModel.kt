@@ -23,6 +23,7 @@ data class SettingsUiState(
     val backupLocation: String = DEFAULT_BACKUP_LABEL,
     val busy: Boolean = false,
     val importPreview: ImportPreview? = null,
+    val importPreviewAiSummary: String? = null,
     val message: String? = null,
 )
 
@@ -46,6 +47,7 @@ class SettingsViewModel(
             backupLocation = backupLocation,
             busy = currentBusy,
             importPreview = preview,
+            importPreviewAiSummary = preview?.let(::formatAiBackupPreview),
             message = currentMessage,
         )
     }.stateIn(
@@ -116,3 +118,7 @@ class SettingsViewModel(
     private fun requireBackupOperations(): BackupOperations =
         checkNotNull(backupOperations) { "备份服务尚未初始化" }
 }
+
+internal fun formatAiBackupPreview(preview: ImportPreview): String =
+    "${preview.aiModelConfigs} 个模型配置 · ${preview.aiWeeklyReports} 份 AI 周报 · " +
+        "${preview.aiCalorieEstimates} 条热量依据\nAPI Key 不包含在备份中"
