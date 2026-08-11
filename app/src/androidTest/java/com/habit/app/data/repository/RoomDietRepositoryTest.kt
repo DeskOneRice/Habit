@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.habit.app.data.local.HabitDatabase
 import com.habit.app.domain.model.BeverageCategory
 import com.habit.app.domain.model.BeverageDetails
+import com.habit.app.domain.model.CalorieSource
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.FoodItemDraft
 import com.habit.app.domain.model.MealRecordDraft
@@ -119,6 +120,72 @@ class RoomDietRepositoryTest {
     }
 
     @Test
+    fun attachedEvidenceNormalizesToModifiedManualFinalCalories() = runTest {
+        val id = repository.save(
+            null,
+            mealDraft("rice", 400).copy(
+                manualFinalCalories = 540,
+                aiCalorieEstimate = estimate("vision-1", 500),
+            ),
+        )
+
+        val saved = repository.observeRecord(id).first()!!
+        val savedEstimate = requireNotNull(saved.aiCalorieEstimate)
+        assertEquals(540, saved.finalCalories)
+        assertEquals(540, savedEstimate.adoptedKcal)
+        assertEquals(true, savedEstimate.wasModified)
+        assertEquals(CalorieSource.MANUAL, saved.calorieSource)
+    }
+
+    @Test
+    fun clearingManualFinalCaloriesNormalizesAttachedEvidenceToCalculatedCalories() = runTest {
+        val initial = estimate("vision-1", 500)
+        val id = repository.save(
+            null,
+            mealDraft("rice", 480).copy(
+                manualFinalCalories = 500,
+                aiCalorieEstimate = initial,
+            ),
+        )
+
+        repository.save(
+            id,
+            mealDraft("rice", 480).copy(
+                manualFinalCalories = null,
+                aiCalorieEstimate = initial.copy(wasModified = true),
+            ),
+        )
+
+        val saved = repository.observeRecord(id).first()!!
+        val savedEstimate = requireNotNull(saved.aiCalorieEstimate)
+        assertEquals(480, saved.finalCalories)
+        assertEquals(480, savedEstimate.adoptedKcal)
+        assertEquals(true, savedEstimate.wasModified)
+        assertEquals(CalorieSource.MANUAL, saved.calorieSource)
+    }
+
+    @Test
+    fun retainedEvidenceReturnsToAiSourceWhenCaloriesReturnToSuggestion() = runTest {
+        val modified = estimate("vision-1", 500).copy(adoptedKcal = 540, wasModified = true)
+        val id = repository.save(
+            null,
+            mealDraft("rice", 400).copy(
+                manualFinalCalories = 540,
+                aiCalorieEstimate = modified,
+            ),
+        )
+
+        repository.save(id, mealDraft("rice", 500))
+
+        val saved = repository.observeRecord(id).first()!!
+        val savedEstimate = requireNotNull(saved.aiCalorieEstimate)
+        assertEquals(500, saved.finalCalories)
+        assertEquals(500, savedEstimate.adoptedKcal)
+        assertEquals(false, savedEstimate.wasModified)
+        assertEquals(CalorieSource.AI_ESTIMATE, saved.calorieSource)
+    }
+
+    @Test
     fun savingNewMealAiEstimateReplacesPreviousEvidence() = runTest {
         val id = repository.save(
             null,
@@ -167,6 +234,8 @@ class RoomDietRepositoryTest {
         assertEquals("before", saved.description)
         assertEquals(500, saved.finalCalories)
         assertEquals("vision-1", saved.aiCalorieEstimate!!.modelIdSnapshot)
+        assertEquals(listOf("before"), saved.foodItems.map { it.name })
+        assertEquals(false, saved.foodItems.any { it.name == "after" })
     }
 
     private fun mealDraft(name: String, calories: Int) = MealRecordDraft(

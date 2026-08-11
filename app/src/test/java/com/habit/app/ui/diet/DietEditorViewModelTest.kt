@@ -193,6 +193,36 @@ class DietEditorViewModelTest {
     }
 
     @Test
+    fun clearingManualCaloriesKeepsEvidenceAttachedForRepositoryNormalization() = runTest(dispatcher) {
+        val repository = RecordingDietRepository()
+        val viewModel = DietEditorViewModel(
+            recordId = null,
+            repository = repository,
+            dateProvider = FixedDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-03T04:00:00Z"), ZoneId.of("UTC")),
+            dietCategoryRepository = FakeDietCategoryRepository(),
+        )
+        advanceUntilIdle()
+        viewModel.adoptEstimate(validEstimate(), 520)
+        viewModel.update {
+            copy(
+                description = "rice",
+                foodItems = listOf(com.habit.app.domain.model.FoodItemDraft("rice", "one bowl", 480)),
+                finalCaloriesText = "",
+            )
+        }
+
+        viewModel.save {}
+        advanceUntilIdle()
+
+        val saved = requireNotNull(repository.lastSaved)
+        val attached = requireNotNull(saved.aiCalorieEstimate)
+        assertEquals(null, saved.manualFinalCalories)
+        assertEquals(520, attached.adoptedKcal)
+        assertTrue(attached.wasModified)
+    }
+
+    @Test
     fun generationSendsOnlyCurrentDescriptionAndSelectedPhotosThenClosesPreparedImages() = runTest(dispatcher) {
         val prepared = kotlin.io.path.createTempFile("diet-ai", ".jpg").toFile()
             .apply { writeBytes(byteArrayOf(1, 2, 3)) }

@@ -44,15 +44,29 @@ class RoomDietRepository(
         val existing = id?.let { requireNotNull(dao.getRecordEntity(it)) { "饮食记录不存在" } }
         val existingEstimate = existing?.let { dao.getCalorieEstimate(it.id) }
         val attachedEstimate = normalized.aiCalorieEstimate?.takeIf { normalized.recordType == DietRecordType.MEAL }
+        val reconciledAttachedEstimate = attachedEstimate?.let { estimate ->
+            val finalCalories = requireNotNull(calculated.finalCalories) { "AI evidence requires final calories" }
+            estimate.copy(
+                adoptedKcal = finalCalories,
+                wasModified = finalCalories != estimate.suggestedKcal,
+            )
+        }
+        val reconciledRetainedEstimate = existingEstimate
+            ?.takeIf { reconciledAttachedEstimate == null && normalized.recordType == DietRecordType.MEAL }
+            ?.let { estimate ->
+                val finalCalories = requireNotNull(calculated.finalCalories) { "AI evidence requires final calories" }
+                estimate.copy(
+                    adoptedKcal = finalCalories,
+                    wasModified = finalCalories != estimate.suggestedKcal,
+                )
+            }
+        val evidenceWasModified = reconciledAttachedEstimate?.wasModified
+            ?: reconciledRetainedEstimate?.wasModified
         val calories = calculated.copy(
-            source = when {
-                attachedEstimate != null && !attachedEstimate.wasModified -> CalorieSource.AI_ESTIMATE
-                attachedEstimate != null -> CalorieSource.MANUAL
-                existingEstimate != null && (
-                    existingEstimate.wasModified || existingEstimate.adoptedKcal != calculated.finalCalories
-                    ) -> CalorieSource.MANUAL
-                existingEstimate != null -> CalorieSource.AI_ESTIMATE
-                else -> calculated.source
+            source = when (evidenceWasModified) {
+                false -> CalorieSource.AI_ESTIMATE
+                true -> CalorieSource.MANUAL
+                null -> calculated.source
             },
         )
         val entity = MealRecordEntity(
@@ -122,17 +136,11 @@ class RoomDietRepository(
                 createdAt = now,
             )
         })
-        if (attachedEstimate != null) {
+        if (reconciledAttachedEstimate != null) {
             dao.deleteCalorieEstimate(recordId)
-            dao.insertCalorieEstimate(attachedEstimate.toEntity(recordId))
-        } else if (existingEstimate != null && normalized.recordType == DietRecordType.MEAL) {
-            val savedCalories = requireNotNull(calories.finalCalories) { "AI evidence requires final calories" }
-            dao.insertCalorieEstimate(
-                existingEstimate.copy(
-                    adoptedKcal = savedCalories,
-                    wasModified = existingEstimate.wasModified || existingEstimate.adoptedKcal != savedCalories,
-                ),
-            )
+            dao.insertCalorieEstimate(reconciledAttachedEstimate.toEntity(recordId))
+        } else if (reconciledRetainedEstimate != null) {
+            dao.insertCalorieEstimate(reconciledRetainedEstimate)
         } else if (existingEstimate != null) {
             dao.deleteCalorieEstimate(recordId)
         }

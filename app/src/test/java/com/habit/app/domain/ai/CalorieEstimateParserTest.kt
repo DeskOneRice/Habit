@@ -18,8 +18,12 @@ class CalorieEstimateParserTest {
     @Test
     fun rejectsInvalidEstimateBoundaries() {
         listOf(
+            validJson().replace(ITEMS_JSON, "[]"),
             validJson().replace("\"minKcal\":200", "\"minKcal\":-1"),
             validJson().replace("\"minKcal\":200,\"maxKcal\":320", "\"minKcal\":321,\"maxKcal\":320"),
+            validJson().replace("\"totalMinKcal\":420", "\"totalMinKcal\":-1"),
+            validJson().replace("\"totalMaxKcal\":650", "\"totalMaxKcal\":-1"),
+            validJson().replace("\"suggestedKcal\":520", "\"suggestedKcal\":-1"),
             validJson().replace("\"totalMinKcal\":420,\"totalMaxKcal\":650", "\"totalMinKcal\":651,\"totalMaxKcal\":650"),
             validJson().replace("\"suggestedKcal\":520", "\"suggestedKcal\":700"),
             validJson().replace("\"name\":\"rice\"", "\"name\":\" \""),
@@ -35,7 +39,29 @@ class CalorieEstimateParserTest {
         }
     }
 
-    private fun validJson() = """{"items":[{"name":"rice","portion":"1 bowl","minKcal":200,"maxKcal":320},{"name":"chicken","portion":"100g","minKcal":220,"maxKcal":330}],"totalMinKcal":420,"totalMaxKcal":650,"suggestedKcal":520,"accuracyNote":"Approximate estimate"}"""
+    @Test
+    fun acceptsZeroAsNonNegativeBoundary() {
+        val parsed = CalorieEstimateParser.parse(
+            """{"items":[{"name":"water","portion":"one glass","minKcal":0,"maxKcal":0}],"totalMinKcal":0,"totalMaxKcal":0,"suggestedKcal":0,"accuracyNote":"Zero calorie"}""",
+            model(),
+            generatedAt = 123L,
+        )
+
+        assertEquals(0, parsed.suggestedKcal)
+    }
+
+    @Test
+    fun acceptsInclusiveMaximumTotal() {
+        val parsed = CalorieEstimateParser.parse(
+            """{"items":[{"name":"meal","portion":"one serving","minKcal":0,"maxKcal":10000}],"totalMinKcal":0,"totalMaxKcal":10000,"suggestedKcal":10000,"accuracyNote":"Upper boundary"}""",
+            model(),
+            generatedAt = 123L,
+        )
+
+        assertEquals(10_000, parsed.totalMaxKcal)
+    }
+
+    private fun validJson() = """{"items":$ITEMS_JSON,"totalMinKcal":420,"totalMaxKcal":650,"suggestedKcal":520,"accuracyNote":"Approximate estimate"}"""
 
     private fun model() = AiModelConfig(
         id = 1,
@@ -53,4 +79,8 @@ class CalorieEstimateParserTest {
         createdAt = 1,
         updatedAt = 1,
     )
+
+    private companion object {
+        const val ITEMS_JSON = """[{"name":"rice","portion":"1 bowl","minKcal":200,"maxKcal":320},{"name":"chicken","portion":"100g","minKcal":220,"maxKcal":330}]"""
+    }
 }
