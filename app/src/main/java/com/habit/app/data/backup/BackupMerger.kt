@@ -111,7 +111,12 @@ object BackupMerger {
         )
         val diet = mergeDiet(current, importedWithMappedDietCategories)
         val quick = mergeQuickCapture(current, importedWithMappedDietCategories, diet.records)
-        val ai = mergeAi(current, importedWithMappedDietCategories, diet.importedRecordIdMap)
+        val ai = mergeAi(
+            current = current,
+            imported = importedWithMappedDietCategories,
+            importedRecordIdMap = diet.importedRecordIdMap,
+            importedWinnerRecordIds = diet.importedWinnerRecordIds,
+        )
         val importedPreferencesAreNewer = imported.preferencesUpdatedAt > current.preferencesUpdatedAt
         return current.copy(
             schemaVersion = HABIT_BACKUP_SCHEMA_VERSION,
@@ -277,6 +282,7 @@ private data class MergedDiet(
     val beverages: List<BackupBeverageDetail>,
     val toppings: List<BackupBeverageTopping>,
     val importedRecordIdMap: Map<Long, Long>,
+    val importedWinnerRecordIds: Set<Long>,
 )
 
 private fun mergeDiet(current: HabitBackup, imported: HabitBackup): MergedDiet {
@@ -335,6 +341,7 @@ private fun mergeDiet(current: HabitBackup, imported: HabitBackup): MergedDiet {
         beverages.sortedBy(BackupBeverageDetail::mealRecordId),
         toppings.sortedBy(BackupBeverageTopping::id),
         recordMap,
+        replaced,
     )
 }
 
@@ -349,6 +356,7 @@ private fun mergeAi(
     current: HabitBackup,
     imported: HabitBackup,
     importedRecordIdMap: Map<Long, Long>,
+    importedWinnerRecordIds: Set<Long>,
 ): MergedAi {
     val models = current.aiModelConfigs.toMutableList()
     val usedModelIds = models.mapTo(mutableSetOf(), BackupAiModelConfig::id)
@@ -400,17 +408,12 @@ private fun mergeAi(
 
     val validMealIds = (current.mealRecords.map(BackupMealRecord::id) + importedRecordIdMap.values).toSet()
     val estimates = current.aiCalorieEstimates
-        .filter { it.mealRecordId in validMealIds }
+        .filter { it.mealRecordId in validMealIds && it.mealRecordId !in importedWinnerRecordIds }
         .toMutableList()
     imported.aiCalorieEstimates.forEach { incoming ->
         val targetMealId = importedRecordIdMap[incoming.mealRecordId] ?: return@forEach
-        val mapped = incoming.copy(mealRecordId = targetMealId)
-        val index = estimates.indexOfFirst { it.mealRecordId == targetMealId }
-        if (index < 0) {
-            estimates += mapped
-        } else if (incoming.generatedAt >= estimates[index].generatedAt) {
-            estimates[index] = mapped
-        }
+        if (targetMealId !in importedWinnerRecordIds) return@forEach
+        estimates += incoming.copy(mealRecordId = targetMealId)
     }
 
     return MergedAi(

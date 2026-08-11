@@ -1,6 +1,8 @@
 package com.habit.app.data.backup
 
 import com.habit.app.data.ai.AiSecretStore
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -149,6 +151,60 @@ class BackupMergerTest {
     }
 
     @Test
+    fun newerEstimateFromOlderImportedMealCannotReplaceWinningCurrentEvidence() {
+        val currentMeal = meal(id = 7, description = "当前餐", createdAt = 10, updatedAt = 30)
+        val importedMeal = meal(id = 7, description = "较旧导入餐", createdAt = 10, updatedAt = 20)
+        val current = backup(habit(7, "当前", 10, 20)).copy(
+            mealRecords = listOf(currentMeal),
+            aiCalorieEstimates = listOf(aiEstimate(7, generatedAt = 40)),
+        )
+        val imported = backup(habit(8, "导入", 11, 21)).copy(
+            mealRecords = listOf(importedMeal),
+            aiCalorieEstimates = listOf(aiEstimate(7, generatedAt = 99)),
+        )
+
+        val result = BackupMerger.merge(current, imported).backup
+
+        assertEquals("当前餐", result.mealRecords.single().description)
+        assertEquals(40L, result.aiCalorieEstimates.single().generatedAt)
+    }
+
+    @Test
+    fun newerImportedMealWithoutEvidenceClearsCurrentEvidence() {
+        val currentMeal = meal(id = 7, description = "当前餐", createdAt = 10, updatedAt = 20)
+        val importedMeal = meal(id = 7, description = "新版导入餐", createdAt = 10, updatedAt = 30)
+        val current = backup(habit(7, "当前", 10, 20)).copy(
+            mealRecords = listOf(currentMeal),
+            aiCalorieEstimates = listOf(aiEstimate(7, generatedAt = 40)),
+        )
+        val imported = backup(habit(8, "导入", 11, 21)).copy(
+            mealRecords = listOf(importedMeal),
+        )
+
+        val result = BackupMerger.merge(current, imported).backup
+
+        assertEquals("新版导入餐", result.mealRecords.single().description)
+        assertTrue(result.aiCalorieEstimates.isEmpty())
+    }
+
+    @Test
+    fun equalMealVersionsDeterministicallyKeepCurrentEvidence() {
+        val sameMeal = meal(id = 7, description = "同一餐", createdAt = 10, updatedAt = 30)
+        val current = backup(habit(7, "当前", 10, 20)).copy(
+            mealRecords = listOf(sameMeal),
+            aiCalorieEstimates = listOf(aiEstimate(7, generatedAt = 40)),
+        )
+        val imported = backup(habit(8, "导入", 11, 21)).copy(
+            mealRecords = listOf(sameMeal),
+            aiCalorieEstimates = listOf(aiEstimate(7, generatedAt = 99)),
+        )
+
+        val result = BackupMerger.merge(current, imported).backup
+
+        assertEquals(40L, result.aiCalorieEstimates.single().generatedAt)
+    }
+
+    @Test
     fun invalidImportedBindingIsNulledAndAllTouchedSecretsAreReturned() {
         val current = backup(habit(7, "当前", 10, 20)).copy(
             aiModelConfigs = listOf(aiModel(7, "shared", "当前模型", 40)),
@@ -206,6 +262,40 @@ class BackupMergerTest {
         }
 
         assertEquals(listOf("room-commit", "clear-all"), events)
+    }
+
+    @Test
+    fun cancellationAfterMergeCommitCannotInterruptTouchedSecretCleanup() = runTest {
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val allowCleanup = CompletableDeferred<Unit>()
+        val store = GatedSecretStore(cleanupStarted, allowCleanup)
+        val job = launch {
+            executeSecretSafeImport(ImportMode.MERGE, setOf("two", "one"), store) { "committed" }
+        }
+
+        cleanupStarted.await()
+        job.cancel()
+        allowCleanup.complete(Unit)
+        job.join()
+
+        assertEquals(listOf("one", "two"), store.removed)
+    }
+
+    @Test
+    fun cancellationAfterReplaceCommitCannotInterruptClearAll() = runTest {
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val allowCleanup = CompletableDeferred<Unit>()
+        val store = GatedSecretStore(cleanupStarted, allowCleanup)
+        val job = launch {
+            executeSecretSafeImport(ImportMode.REPLACE, emptySet(), store) { "committed" }
+        }
+
+        cleanupStarted.await()
+        job.cancel()
+        allowCleanup.complete(Unit)
+        job.join()
+
+        assertEquals(1, store.clearAllCalls)
     }
 
     private fun backup(
@@ -275,5 +365,27 @@ private class RecordingSecretStore(
     override suspend fun clearAll() {
         clearAllCalls += 1
         events += "clear-all"
+    }
+}
+
+private class GatedSecretStore(
+    private val cleanupStarted: CompletableDeferred<Unit>,
+    private val allowCleanup: CompletableDeferred<Unit>,
+) : AiSecretStore {
+    val removed = mutableListOf<String>()
+    var clearAllCalls = 0
+
+    override suspend fun put(externalId: String, apiKey: String) = Unit
+    override suspend fun get(externalId: String): String? = null
+    override suspend fun maskedSuffix(externalId: String): String? = null
+    override suspend fun remove(externalId: String) {
+        cleanupStarted.complete(Unit)
+        allowCleanup.await()
+        removed += externalId
+    }
+    override suspend fun clearAll() {
+        cleanupStarted.complete(Unit)
+        allowCleanup.await()
+        clearAllCalls += 1
     }
 }

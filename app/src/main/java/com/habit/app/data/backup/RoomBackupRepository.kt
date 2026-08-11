@@ -19,6 +19,8 @@ import com.habit.app.data.local.DietTemplateEntity
 import com.habit.app.data.local.DietTemplateFoodItemEntity
 import com.habit.app.data.local.DietTemplateToppingEntity
 import com.habit.app.data.local.DietCategoryEntity
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 enum class ImportMode { REPLACE, MERGE }
 
@@ -227,9 +229,11 @@ internal suspend fun <T> executeSecretSafeImport(
     roomTransaction: suspend () -> T,
 ): T {
     val result = roomTransaction()
-    when (mode) {
-        ImportMode.REPLACE -> secretStore.clearAll()
-        ImportMode.MERGE -> secretIdsToClear.sorted().forEach { secretStore.remove(it) }
+    withContext(NonCancellable) {
+        when (mode) {
+            ImportMode.REPLACE -> secretStore.clearAll()
+            ImportMode.MERGE -> secretIdsToClear.sorted().forEach { secretStore.remove(it) }
+        }
     }
     return result
 }
