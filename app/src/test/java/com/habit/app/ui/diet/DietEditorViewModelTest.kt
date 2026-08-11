@@ -167,6 +167,34 @@ class DietEditorViewModelTest {
     }
 
     @Test
+    fun adoptingEstimateChangesOnlyCaloriesAndEvidence() = runTest(dispatcher) {
+        val viewModel = editor()
+        advanceUntilIdle()
+        viewModel.update {
+            copy(
+                mealType = MealType.DINNER,
+                description = "牛肉饭配时蔬",
+                foodItems = listOf(com.habit.app.domain.model.FoodItemDraft("牛肉饭", "1 份", 620)),
+                note = "少油",
+                photos = listOf(DietPhoto(relativePath = "library/meal.jpg", sortOrder = 0)),
+            )
+        }
+        val before = viewModel.state.value
+
+        viewModel.adoptEstimate(validEstimate(), 710)
+
+        val after = viewModel.state.value
+        assertEquals("710", after.finalCaloriesText)
+        assertEquals(710, after.aiEstimate?.adoptedKcal)
+        assertEquals(before.mealType, after.mealType)
+        assertEquals(before.description, after.description)
+        assertEquals(before.foodItems, after.foodItems)
+        assertEquals(before.note, after.note)
+        assertEquals(before.photos, after.photos)
+        assertEquals(before.dietCategoryId, after.dietCategoryId)
+    }
+
+    @Test
     fun cancelDoesNotMutateAdoptedCalories() = runTest(dispatcher) {
         val viewModel = editor()
         advanceUntilIdle()
@@ -252,6 +280,41 @@ class DietEditorViewModelTest {
         assertEquals(1, client.lastImages.size)
         assertFalse(prepared.exists())
         assertEquals(CalorieSource.AI_ESTIMATE, viewModel.state.value.calorieSource)
+    }
+
+    @Test
+    fun previewGenerationDoesNotChangeExistingCaloriesUntilAdopted() = runTest(dispatcher) {
+        val prepared = kotlin.io.path.createTempFile("diet-ai-preview", ".jpg").toFile()
+            .apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val viewModel = DietEditorViewModel(
+            recordId = null,
+            repository = RecordingDietRepository(),
+            dateProvider = FixedDateProvider,
+            clock = Clock.fixed(Instant.parse("2026-08-03T04:00:00Z"), ZoneId.of("UTC")),
+            dietCategoryRepository = FakeDietCategoryRepository(),
+            modelRepository = FakeAiModelRepository(),
+            secretStore = FakeAiSecretStore(),
+            client = RecordingVisionClient(),
+            imagePreparer = FakeCalorieImagePreparer(prepared),
+            photoFileResolver = { prepared },
+            coordinator = AiModelOperationCoordinator(),
+        )
+        advanceUntilIdle()
+        viewModel.adoptEstimate(validEstimate(), 680)
+        viewModel.update {
+            copy(
+                description = "current lunch",
+                photos = listOf(DietPhoto(relativePath = "selected.jpg", sortOrder = 0)),
+            )
+        }
+        var preview: AiCalorieEstimateDraft? = null
+
+        viewModel.generateEstimatePreview { preview = it }
+        advanceUntilIdle()
+
+        assertEquals(520, preview?.suggestedKcal)
+        assertEquals("680", viewModel.state.value.finalCaloriesText)
+        assertEquals(680, viewModel.state.value.aiEstimate?.adoptedKcal)
     }
 
     @Test

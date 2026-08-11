@@ -367,7 +367,14 @@ class DietEditorViewModel internal constructor(
         }
     }
 
-    fun generateEstimate(): Job {
+    fun generateEstimate(): Job = generateEstimateInternal { estimate ->
+        adoptEstimate(estimate, estimate.suggestedKcal)
+    }
+
+    fun generateEstimatePreview(onPreviewReady: (AiCalorieEstimateDraft) -> Unit): Job =
+        generateEstimateInternal(onPreviewReady)
+
+    private fun generateEstimateInternal(onGenerated: (AiCalorieEstimateDraft) -> Unit): Job {
         val current = mutableState.value
         if (current.recordType != DietRecordType.MEAL || current.photos.size !in 1..3) {
             mutableState.value = current.copy(message = ESTIMATE_UNAVAILABLE_MESSAGE)
@@ -424,7 +431,7 @@ class DietEditorViewModel internal constructor(
                     }
                 }
                 val estimate = CalorieEstimateParser.parse(response.second, response.first, clock.millis())
-                adoptEstimate(estimate, estimate.suggestedKcal)
+                onGenerated(estimate)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: CalorieEstimateParseException) {
@@ -587,6 +594,6 @@ private fun AiModelConfig.isEligibleMealEstimateModel(): Boolean {
 private class EstimateGenerationFailure(val safeMessage: String) : IllegalStateException()
 
 private const val TEST_STATE_PREFIX = "habit-test-v1|"
-private const val ESTIMATE_UNAVAILABLE_MESSAGE = "Calorie estimation is unavailable for this meal"
-private const val ESTIMATE_RESPONSE_MESSAGE = "The calorie estimate response was invalid"
-private const val ESTIMATE_FAILED_MESSAGE = "Unable to generate a calorie estimate"
+private const val ESTIMATE_UNAVAILABLE_MESSAGE = "暂时无法使用 AI 热量估算，请检查照片和 AI 设置"
+private const val ESTIMATE_RESPONSE_MESSAGE = "未能识别热量，请换一张清晰照片重试"
+private const val ESTIMATE_FAILED_MESSAGE = "热量估算失败，请稍后重试"

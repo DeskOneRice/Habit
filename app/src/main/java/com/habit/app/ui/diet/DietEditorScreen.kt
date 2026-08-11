@@ -22,6 +22,7 @@ import android.graphics.BitmapFactory
 import com.habit.app.data.photos.CameraPhotoTarget
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.habit.app.domain.model.DietRecordType
+import com.habit.app.domain.model.AiCalorieEstimateDraft
 import com.habit.app.domain.model.MealType
 import com.habit.app.domain.model.mealTypeDisplayOrder
 import com.habit.app.domain.model.displayName
@@ -57,6 +58,9 @@ fun DietEditorScreen(
     var newCategoryName by remember { mutableStateOf("") }
     var cameraTarget by remember { mutableStateOf<CameraPhotoTarget?>(null) }
     var previewFile by remember { mutableStateOf<File?>(null) }
+    var showEstimateSheet by remember { mutableStateOf(false) }
+    var estimatePreview by remember { mutableStateOf<AiCalorieEstimateDraft?>(null) }
+    var adoptedEstimateText by remember { mutableStateOf("") }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) {
         viewModel.importPhotos(it)
     }
@@ -137,6 +141,20 @@ fun DietEditorScreen(
                     }
                 }
             }
+            AiCalorieEstimateAction(
+                recordType = state.recordType,
+                photoCount = state.photos.size,
+                isBusy = state.isGeneratingEstimate,
+                onEstimate = {
+                    estimatePreview = null
+                    adoptedEstimateText = state.finalCaloriesText
+                    showEstimateSheet = true
+                    viewModel.generateEstimatePreview { estimate ->
+                        estimatePreview = estimate
+                        adoptedEstimateText = estimate.suggestedKcal.toString()
+                    }
+                },
+            )
             OutlinedTextField(
                 value = state.finalCaloriesText,
                 onValueChange = { value -> viewModel.update { copy(finalCaloriesText = value.filter(Char::isDigit)) } },
@@ -296,6 +314,26 @@ fun DietEditorScreen(
         )
     }
     previewFile?.let { file -> DietPhotoPreviewDialog(file) { previewFile = null } }
+    if (showEstimateSheet) {
+        AiCalorieEstimateSheet(
+            estimate = estimatePreview,
+            selectedPhotoCount = state.photos.size,
+            adoptedCaloriesText = adoptedEstimateText,
+            isBusy = state.isGeneratingEstimate,
+            errorMessage = state.message,
+            onAdoptedCaloriesChange = { adoptedEstimateText = it },
+            onCancel = {
+                if (state.isGeneratingEstimate) viewModel.cancelEstimateGeneration()
+                estimatePreview = null
+                showEstimateSheet = false
+            },
+            onAdopt = { calories ->
+                estimatePreview?.let { viewModel.adoptEstimate(it, calories) }
+                estimatePreview = null
+                showEstimateSheet = false
+            },
+        )
+    }
 }
 
 @Composable

@@ -3,6 +3,7 @@ package com.habit.app.ui.diet
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.habit.app.domain.model.DietCategoryScope
+import com.habit.app.domain.model.AiCalorieEstimate
 import com.habit.app.domain.model.DietRecordType
 import com.habit.app.domain.model.MealRecord
 import com.habit.app.domain.repository.DietCategoryRepository
@@ -19,6 +20,7 @@ data class DietRecordDetailUiState(
     val loading: Boolean = true,
     val record: MealRecord? = null,
     val categoryName: String = "",
+    val aiEvidence: AiCalorieEstimate? = null,
     val notFound: Boolean = false,
 )
 
@@ -43,6 +45,7 @@ class DietRecordDetailViewModel(
                         loading = false,
                         record = record,
                         categoryName = categories.firstOrNull { it.id == record.dietCategoryId }?.name.orEmpty(),
+                        aiEvidence = record.aiCalorieEstimate.takeIf { record.recordType == DietRecordType.MEAL },
                     )
                 }
             }
