@@ -421,6 +421,27 @@ class OpenAiCompatibleClientTest {
         }
     }
 
+    @Test
+    fun api23UsesLegacyContentLengthAndKeepsNegativeLengthUnknown() = runTest {
+        val connection = FakeHttpURLConnection(
+            url = URL("https://api.example.com/chat/completions"),
+            statusCode = 200,
+            responseBody = "ok".encodeToByteArray(),
+            legacyReportedContentLength = -1,
+            failOnLongContentLength = true,
+        )
+        val transport = UrlConnectionAiHttpTransport(
+            connectionFactory = { connection },
+            dispatcher = Dispatchers.IO,
+        )
+
+        val response = transport.execute(request(connection.url.toString()))
+
+        assertEquals("ok", response.body.decodeToString())
+        assertEquals(1, connection.legacyContentLengthCalls.get())
+        assertEquals(0, connection.longContentLengthCalls.get())
+    }
+
     private fun request(url: String) = AiHttpRequest(
         url = url,
         headers = mapOf("Authorization" to "Bearer secret", "Content-Type" to "application/json"),
@@ -443,12 +464,16 @@ class OpenAiCompatibleClientTest {
         private val responseHeaders: Map<String, String> = emptyMap(),
         private val hasErrorStream: Boolean = true,
         private val reportedContentLength: Long = responseBody.size.toLong(),
+        private val legacyReportedContentLength: Int = reportedContentLength.toInt(),
+        private val failOnLongContentLength: Boolean = false,
         private val suppliedResponseStream: InputStream? = null,
     ) : HttpURLConnection(url) {
         val disconnected = AtomicBoolean(false)
         val disconnectCalled = CountDownLatch(1)
         val responseCodeCalls = AtomicInteger(0)
         val outputStreamCalls = AtomicInteger(0)
+        val legacyContentLengthCalls = AtomicInteger(0)
+        val longContentLengthCalls = AtomicInteger(0)
         val writtenBody = ByteArrayOutputStream()
 
         override fun connect() = Unit
@@ -477,7 +502,15 @@ class OpenAiCompatibleClientTest {
             null
         }
         override fun getHeaderField(name: String?): String? = responseHeaders[name]
-        override fun getContentLengthLong(): Long = reportedContentLength
+        override fun getContentLength(): Int {
+            legacyContentLengthCalls.incrementAndGet()
+            return legacyReportedContentLength
+        }
+        override fun getContentLengthLong(): Long {
+            longContentLengthCalls.incrementAndGet()
+            if (failOnLongContentLength) throw UnsupportedOperationException("API 24 method unavailable")
+            return reportedContentLength
+        }
     }
 
     private class BlockingHttpURLConnection(url: URL) : FakeHttpURLConnection(url, 200) {

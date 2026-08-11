@@ -1,71 +1,64 @@
-# Habit 0.1.0 测试记录
+# Habit 0.6.0 发布测试
 
-结果日期：2026-07-30
+结果日期：2026-08-11
 
-## 自动化与构建环境
+## 门禁环境
 
 - JDK：`D:\MySoftware\Java\jdk-17`
 - Android SDK：`D:\MySoftware\Android\AndroidSdk`
-- 自动化设备：Android Emulator `sdk_gphone64_x86_64`（`emulator-5554`）
-- Android API：35
-- Gradle 缓存：仓库本地忽略目录 `work\.gcache`
+- Gradle：`D:\MySoftware\Gradle\gradle-9.5.0`
+- Gradle 缓存：`D:\MySoftware\Gradle\cache`
+- 目标设备：`Small_Phone_API_35`，serial `emulator-5554`，Android 15 / API 35
 
-最终 Gradle 命令：
+## 最终自动化结果
+
+- 版本/文档 smoke：5 项通过，0 失败、0 错误、0 跳过；测试先在 0.5.1/11 和旧文档上取得 2 项预期失败，再更新到 0.6.0/12。
+- JVM：45 个测试套件、227 项测试全部通过，0 失败、0 错误、0 跳过。
+- Android Lint：0 个 error、17 个非阻断 warning、2 个 hint。API 23 的 HTTP 响应长度兼容回归已覆盖，2 MiB 有界读取策略保持不变。
+- Android 测试编译：`compileDebugAndroidTestKotlin` 成功。
+- 设备：`Small_Phone_API_35` / `emulator-5554`，163 项测试全部通过，0 失败、0 错误、0 跳过，runner 用时 1,149.973 秒；Gradle 完整任务 `BUILD SUCCESSFUL`，用时 19 分 50 秒。
+- 首次设备门禁的外层 10 分钟上限先于 163 项结束，135 项完成后 Gradle 被终止但 runner 继续推进；定向复现当时所在的饮食详情用例为 1/1 通过（13.189 秒）。清理孤儿 runner 后，以 30 分钟上限重新执行完整套件并取得上述 163/163 结果。
+
+## 自动化门禁
+
+先运行版本/文档 smoke，再连续执行完整 JVM、Lint、Android 测试编译和设备套件：
 
 ```powershell
-.\gradlew.bat clean testDebugUnitTest connectedDebugAndroidTest lintDebug assembleDebug --offline --no-daemon "-Pkotlin.compiler.execution.strategy=in-process" "-Pkotlin.incremental=false"
+& 'D:\MySoftware\Gradle\gradle-9.5.0\bin\gradle.bat' --gradle-user-home 'D:\MySoftware\Gradle\cache' testDebugUnitTest --tests 'com.habit.app.ProjectSmokeTest' --offline
+& 'D:\MySoftware\Gradle\gradle-9.5.0\bin\gradle.bat' --gradle-user-home 'D:\MySoftware\Gradle\cache' testDebugUnitTest lintDebug compileDebugAndroidTestKotlin --offline
+& 'D:\MySoftware\Gradle\gradle-9.5.0\bin\gradle.bat' --gradle-user-home 'D:\MySoftware\Gradle\cache' connectedDebugAndroidTest --offline
 ```
 
-最终命令完整执行生产 Kotlin/Java、Android 测试、JVM 测试、Lint 和 APK 构建。首次 Lint 准备时曾联网下载官方 `lint-gradle:32.3.0` 到仓库本地缓存；最终整套命令在 `--offline` 模式下重新从干净构建成功。
+发布前必须同时满足：JVM 0 失败、Lint 0 错误、Android 测试编译成功、当前全部设备测试 0 失败。最终精确测试总数以 XML 结果和设备报告统计，不从源码文件数推算。
 
-## 最终结果
+## 数据库与备份兼容
 
-- JVM 测试：32 个通过，0 失败，0 错误，0 跳过
-- 设备测试：60 个通过，0 失败，0 错误，0 跳过
-- Android Lint：`lintDebug` 成功，0 错误（5 个非阻断警告、1 个提示）；`DataExtractionRules` 警告已消失
-- `assembleDebug`：成功
-- 完整命令：`BUILD SUCCESSFUL`，耗时 9 分 26 秒
-- APK：`Habit-0.1.0-debug.apk`
-- APK 大小：14,596,287 字节（13.92 MiB）
-- APK SHA-256：`1388e21ee3b7b251999c0a63487f9749a7a8e4ce93498447dd15de898fe6d0fe`
-- 模拟器安装与启动冒烟：`adb install -r` 返回 `Success`；冷启动返回 `Status: ok`，`com.habit.app/.MainActivity` 成为 `topResumedActivity`
+- `HabitDatabaseMigrationTest.migrateFourToFivePreservesExistingDataAndCreatesAiTables` 从真实 Room v4 schema 写入分类、习惯、打卡、饮食和照片，执行 `MIGRATION_4_5` 后逐项确认旧数据仍为 1 条，并确认新 AI 表为空且可查询。
+- 0.5.1 → 0.6.0 必须做真实 APK 覆盖安装：先安装稳定签名的 0.5.1，写入习惯、打卡、饮食、照片和备份数据，再执行 `adb install -r` 安装 0.6.0；不得卸载或清除数据。升级后逐项核对旧数据与照片，并确认 AI 页面为未配置状态。
+- 备份 schema 5 包含非秘密的模型配置、功能绑定、周报和图片热量估算依据；编码测试必须确认不含 `apiKey`、Authorization、密文或哨兵 Key。
+- 备份 schema 1–4 兼容由 `HabitBackupCodecTest` 覆盖：schema 1 补空饮食集合、schema 2 保留饮品属性、schema 3 归一化饮食分类、schema 4 保留自定义分类并补空 AI 集合。还需从测试夹具或历史备份执行导入预览，确认不会要求旧备份包含 AI 字段。
+- 恢复备份后需要重新输入 API Key；合并导入只清除受影响模型的旧 Key，完全替换会清除全部旧 Key。重新测试模型并核对功能绑定后才可调用 AI。
 
-自动化覆盖包括完整 MVP 用户旅程、动态设备本地日期、欢迎与返回栈、今日打卡、整体与单习惯月历、三项统计、编辑入口、主题即时切换与重建持久化，以及 360 dp / 480 dp、1.3 倍字体、中文无障碍描述和 48 dp 触控目标。
+## AI 假端点与隐私回归
 
-## 自适应、无障碍与安全策略复核
+自动化测试使用注入的假客户端覆盖模型新增/编辑/删除、文本/图片能力测试、功能绑定、综合周报预览/保存/替换、图片选择/确认/取消和热量采用。端到端网络验证使用本机假端点：
 
-- 360 dp / 1.3 倍字体：真实 360 dp 测试视口中，六周月历首末日期和左右边界均在视口内；同一天的 5 个不同标记显示为 4 个 Emoji 与 `+1`。日期单元高 56 dp，Emoji 与 `+1` 均为 9 sp，不以不可读的小字号换取通过。
-- 480 dp / 1.3 倍字体：设备测试通过 `wm size 960x1280` 与 320 dpi 创建真实 480 × 640 dp 配置，验证完整应用中的月份前后切换、月历左右边界、新建习惯、详情编辑、编辑器保存和设置分类入口。测试在 `finally` 中精确恢复原始显示覆盖值和字体比例；门禁前后设备均为 360 × 640 dp、1.0 倍字体。
-- 主要图标按钮：月份切换、日期面板关闭、打卡/取消打卡、详情返回与月份切换，以及 Emoji/颜色选择均验证中文说明和至少 48 × 48 dp 触控目标。
-- 分类短屏：主分类列表与删除非空分类后的迁移目标列表均可滚动到最后一项。
-- 备份策略：源清单与打包合并清单的 `android:allowBackup` 均为 `false`；同时引用 legacy `fullBackupContent` 与 Android 12+ `dataExtractionRules`。两个规则文件对 `root`、`file`、`database`、`sharedpref`、`external` 及四个设备加密存储域全部使用 `path="."` 排除，Android 12+ 规则分别覆盖 `cloud-backup` 与 `device-transfer`。
-- 打包权限：合并清单没有 `android.permission.INTERNET`、相机、位置、通讯录、存储等产品范围外权限，也没有 `<uses-feature>`。唯一 `<uses-permission>` 是 AndroidX 自动生成、仅供应用自身使用的签名级 `com.habit.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`。
-- 变更卫生：最终提交前执行 `git diff --check` 与 `git diff --cached --check`，均要求 0 个空白错误。
+1. 启动只记录经过脱敏请求的 OpenAI Chat Completions 兼容服务，监听 `127.0.0.1:18080`，路径为 `/v1/chat/completions`。
+2. 执行 `adb reverse tcp:18080 tcp:18080`，在应用中配置 `http://127.0.0.1:18080/v1`、假模型 ID 和假 Key，并明确确认 HTTP 风险。
+3. “测试文本”返回成功后绑定综合周报；确认请求只含上一完整周的结构化习惯/饮食摘要，不含照片、Key 字段或本地文件。
+4. “测试图片”返回成功后绑定图片热量估算；未选择照片、取消确认或关闭弹窗时服务器必须收到 0 次请求，只有“确认并开始估算”才发送已选照片。
+5. 分别返回 401、429、超时、5xx 和畸形 JSON，确认 UI 只显示安全中文错误，不泄露 Key、原始响应或内部模型标识。
 
-第一次纳入全部整改的 clean 门禁在 60 个设备测试中通过 58 个，两个首次创建后的返回栈用例分别过早读取 Activity 生命周期、或只等待 5 秒。隔离重现确认系统返回最终会结束 Activity、Launcher 会恢复前台，生产导航没有回归。测试改为条件轮询 Activity 确实退出（最多 10 秒），仍保留“不能返回欢迎页或编辑器”的原断言；相关 focused 集合 5/5 通过，随后上述完整 clean 门禁 60/60 通过。
+## AI 关闭回归
 
-Android 12+ 设备迁移策略的 focused `ManifestPolicyTest` 最终通过 1/1。此前尝试在原工作区执行时，测试前的 Gradle 缓存 JAR 访问被 Windows 沙箱拒绝；最终使用指向同一工作树的短路径映射执行，避免路径/缓存访问问题。上述 9 分 26 秒的完整 clean 门禁也使用该映射，构建内容与本工作树一致。
+在没有模型、没有 API Key、两项功能均“暂不绑定”的全新或升级安装上：
 
-## Redmi K70 / HyperOS 3.0.303.0 真机检查清单
+- 习惯创建、编辑、归档、删除、今日打卡、补签和月历统计正常；
+- 饮食记录、照片、模板、分类、统计、详情页和“再记一次”正常；
+- 导出、schema 1–4 导入、schema 5 导入与备份目录迁移正常；
+- 打开综合周报或图片热量入口只显示未配置/不可用提示，不发起网络请求，不影响记录保存；
+- 冷启动后 logcat 无 `FATAL EXCEPTION`，应用 Activity 正常恢复到前台。
 
-状态：**待真机连接验证**
+## 发布 APK 验证
 
-模拟器结果不能替代以下真机证据。只有 ADB 实际检测到 Redmi K70 后才能更新状态。
-
-- [ ] `adb devices -l` 显示真实 Redmi K70，状态为 `device`
-- [ ] 在 HyperOS 3.0.303.0 上安装并首次启动 APK
-- [ ] 创建、编辑、归档和双重确认删除习惯
-- [ ] 新建、重命名分类，并迁移后删除非空自定义分类
-- [ ] 完成今天打卡、过去日期补签/取消，并确认未来日期不可修改
-- [ ] 整体月历显示 Emoji 标记与四个以上标记的 `+N`
-- [ ] 单习惯月历及累计完成、当前连续、最长连续正确
-- [ ] 五套主题均可即时切换，并在重启后保持
-- [ ] 重启后习惯、分类和打卡仍存在
-- [ ] 主要页面无溢出、遮挡或不可点击区域
-
-## 已知非阻断限制
-
-- 数据仅保存在本机；没有账号、云同步、跨设备同步或备份恢复。
-- 当前交付是可侧载的 debug 构建，并非应用商店签名的 release 版本。
-- Redmi K70 / HyperOS 3.0.303.0 真机验证仍待真实设备连接。
-- 将已验证提交安全同步到 `D:\MyProjects\VibeCodingProjects\Habit` 不在本工作区内执行，仍待后续处理。
+从干净已提交源码构建 release，将输出复制为 `artifacts\Habit-0.6.0-release.apk`。用 SDK `aapt2` 与 `apksigner` 验证：包名 `com.habit.app`、versionCode 12、versionName 0.6.0、minSdk 23、targetSdk 36、v1/v2 签名为 true，且证书 SHA-256 与 0.5.1 完全相同。复制前后的 SHA-256 必须一致，并记录最终 APK 字节数、完整 SHA-256、设备 serial、覆盖安装/数据保留及冷启动证据。

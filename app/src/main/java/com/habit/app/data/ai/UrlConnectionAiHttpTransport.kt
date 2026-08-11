@@ -1,5 +1,6 @@
 package com.habit.app.data.ai
 
+import android.os.Build
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -93,7 +94,7 @@ class UrlConnectionAiHttpTransport internal constructor(
                     } else {
                         connection.inputStream
                     }
-                    val body = stream?.use { readBounded(it, connection.contentLengthLong) } ?: byteArrayOf()
+                    val body = stream?.use { readBounded(it, responseContentLength(connection)) } ?: byteArrayOf()
                     return AiHttpResponse(statusCode, body)
                 }
             } finally {
@@ -114,6 +115,13 @@ class UrlConnectionAiHttpTransport internal constructor(
         connection.setFixedLengthStreamingMode(request.body.size)
         request.headers.forEach(connection::setRequestProperty)
     }
+
+    private fun responseContentLength(connection: HttpURLConnection): Long =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            connection.contentLengthLong
+        } else {
+            connection.contentLength.toLong()
+        }
 
     private fun readBounded(stream: InputStream, contentLength: Long): ByteArray {
         if (contentLength > MAX_AI_HTTP_RESPONSE_BYTES) {
